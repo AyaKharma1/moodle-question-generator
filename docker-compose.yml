@@ -1,0 +1,53 @@
+# Local development / demo stack.
+# Start everything:  docker compose up --build
+#   Frontend  -> http://localhost:8081
+#   API docs  -> http://localhost:8000/docs
+#
+# Secrets come from the environment / a local .env file (see .env.example).
+# The default AI provider is the offline "mock", so no API key is required.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: moodle
+      POSTGRES_PASSWORD: moodle
+      POSTGRES_DB: moodleqg
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moodle -d moodleqg"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://moodle:moodle@db:5432/moodleqg
+      SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-secret-change-me}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      UPLOAD_DIR: /app/data/uploads
+      CORS_ORIGINS: '["http://localhost:8080","http://localhost:5173"]'
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/data/uploads
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8081:80"
+
+volumes:
+  pgdata:
+  uploads:

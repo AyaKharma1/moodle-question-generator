@@ -1,0 +1,11 @@
+Einführung in Datenbanksysteme
+
+Ein relationales Datenbanksystem speichert Daten in Tabellen, die aus Zeilen und Spalten bestehen. Jede Zeile repräsentiert einen Datensatz, und jede Spalte steht für ein Attribut dieses Datensatzes.
+
+Ein Primärschlüssel ist ein Attribut oder eine Kombination von Attributen, das jeden Datensatz einer Tabelle eindeutig identifiziert. Ein Fremdschlüssel verweist auf den Primärschlüssel einer anderen Tabelle und stellt so eine Beziehung zwischen zwei Tabellen her.
+
+Die Normalisierung ist ein Prozess, der Redundanz in einer Datenbank reduziert und die Datenintegrität verbessert. Die dritte Normalform verlangt, dass jedes Nicht-Schlüssel-Attribut nur vom Primärschlüssel abhängt.
+
+Eine Transaktion ist eine Folge von Datenbankoperationen, die als eine einzige logische Einheit ausgeführt wird. Transaktionen folgen den ACID-Eigenschaften: Atomarität, Konsistenz, Isolation und Dauerhaftigkeit.
+
+SQL ist die Standardsprache für die Abfrage und Bearbeitung relationaler Datenbanken. Der Befehl SELECT dient dazu, Daten aus einer oder mehreren Tabellen abzurufen.

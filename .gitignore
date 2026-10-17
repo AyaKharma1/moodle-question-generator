@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.sqlite
+*.db
+backend/.alembic_*.db
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env / secrets
+.env
+*.local
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
