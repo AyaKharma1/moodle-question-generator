@@ -11,8 +11,9 @@ const edits = reactive<Record<number, Question>>({});
 async function refresh() {
   loading.value = true;
   try {
-    questions.value = await api.listQuestions();
-    for (const q of questions.value) edits[q.id] = structuredClone(q);
+  const list = await api.listQuestions();
+    for (const q of list) edits[q.id] = structuredClone(q);
+    questions.value = list;
   } finally {
     loading.value = false;
   }
