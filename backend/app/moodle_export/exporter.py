@@ -15,10 +15,12 @@ test instance, which the guide describes step by step.
 from __future__ import annotations
 
 import html
+from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from lxml import etree
 
+from app.moodle_import.parser import safe_parser
 from app.schemas.question import GeneratedQuestion, QuestionType
 
 # Moodle only accepts specific fraction values. These are the exact strings
@@ -162,6 +164,94 @@ def _shortanswer(q: GeneratedQuestion, name: str):
     return question
 
 
+def category_path_for(fach: Optional[str], category: Optional[str]) -> Optional[str]:
+    """Build a Moodle category path ``$course$/top/<Fach>/<Kategorie>``.
+
+    A literal slash inside one name is escaped as ``//`` (Moodle convention);
+    the " / " separator we use for display becomes a real level again.
+    """
+    segments: list[str] = []
+    if fach:
+        segments.append(fach)
+    if category:
+        segments.extend(part.strip() for part in category.split(" / "))
+    segments = [s.replace("/", "//") for s in segments if s]
+    return "$course$/top/" + "/".join(segments) if segments else None
+
+
+def _category_element(path: str):
+    question = etree.Element("question")
+    question.set("type", "category")
+    category = etree.SubElement(question, "category")
+    etree.SubElement(category, "text").text = path
+    info = etree.SubElement(question, "info")
+    info.set("format", "moodle_auto_format")
+    etree.SubElement(info, "text").text = ""
+    return question
+
+
+@dataclass
+class ExportItem:
+    """One question for :func:`export_bank`: either Moodle's original XML or
+    a domain question that still has to be converted."""
+
+    category_path: Optional[str]
+    raw_xml: Optional[str] = None
+    question: Optional[GeneratedQuestion] = None
+    name: Optional[str] = None
+
+
+def _parse_raw(raw_xml: str):
+    try:
+        return etree.fromstring(raw_xml.encode("utf-8"), parser=safe_parser())
+    except etree.XMLSyntaxError as exc:
+        raise ExportValidationError(f"Stored question XML is invalid: {exc}") from exc
+
+
+def export_bank(items: Iterable[ExportItem]) -> bytes:
+    """Serialize bank questions grouped by Moodle category.
+
+    Questions of the same category are written together after one
+    ``<question type="category">`` marker, so Moodle recreates the category
+    tree on import and quizzes can draw random questions per category.
+    """
+    items = list(items)
+    if not items:
+        raise ExportValidationError("Cannot export an empty question set.")
+
+    groups: dict[Optional[str], list[ExportItem]] = {}
+    for item in items:
+        groups.setdefault(item.category_path, []).append(item)
+
+    root = etree.Element("quiz")
+    for path, group in groups.items():
+        if path:
+            root.append(_category_element(path))
+        for item in group:
+            if item.raw_xml:
+                root.append(_parse_raw(item.raw_xml))
+            elif item.question is not None:
+                root.append(question_to_element(item.question, item.name))
+            else:
+                raise ExportValidationError("Export item has no question content.")
+    return _serialize(root)
+
+
+def _serialize(root) -> bytes:
+    xml_bytes = etree.tostring(
+        etree.ElementTree(root),
+        xml_declaration=True,
+        encoding="UTF-8",
+        pretty_print=True,
+    )
+    # Defensive re-parse: guarantee we only ever hand out well-formed XML.
+    try:
+        etree.fromstring(xml_bytes)
+    except etree.XMLSyntaxError as exc:  # pragma: no cover - should never happen
+        raise ExportValidationError(f"Generated XML is not well-formed: {exc}") from exc
+    return xml_bytes
+
+
 def export_questions(
     questions: Iterable[GeneratedQuestion],
     names: Optional[list[Optional[str]]] = None,
@@ -180,17 +270,4 @@ def export_questions(
     for i, q in enumerate(questions):
         name = names[i] if names and i < len(names) else None
         root.append(question_to_element(q, name))
-
-    xml_bytes = etree.tostring(
-        etree.ElementTree(root),
-        xml_declaration=True,
-        encoding="UTF-8",
-        pretty_print=True,
-    )
-
-    # Defensive re-parse: guarantee we only ever hand out well-formed XML.
-    try:
-        etree.fromstring(xml_bytes)
-    except etree.XMLSyntaxError as exc:  # pragma: no cover - should never happen
-        raise ExportValidationError(f"Generated XML is not well-formed: {exc}") from exc
-    return xml_bytes
+    return _serialize(root)

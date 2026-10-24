@@ -27,7 +27,8 @@ from app.schemas.question import (
 
 
 def persist_generated(
-    db: Session, *, owner: User, document: Document, outcome: GenerationOutcome
+    db: Session, *, owner: User, document: Document, outcome: GenerationOutcome,
+    fach: str | None = None, category: str | None = None,
 ) -> list[Question]:
     """Store generated questions as PENDING, with answers, source and snapshot."""
     created: list[Question] = []
@@ -46,6 +47,8 @@ def persist_generated(
             is_duplicate=item.validation.is_duplicate,
             ai_generated=True,
             original_snapshot=gq.model_dump(mode="json"),
+            fach=fach or None,
+            category=category or None,
         )
         for pos, a in enumerate(gq.answers):
             row.answers.append(

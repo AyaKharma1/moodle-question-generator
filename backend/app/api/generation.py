@@ -47,7 +47,10 @@ def generate_questions(
         logger.warning("AI provider failed for user=%s: %s", current.id, exc)
         raise HTTPException(status_code=502, detail=str(exc))
 
-    created = persist_generated(db, owner=current, document=document, outcome=outcome)
+    created = persist_generated(
+        db, owner=current, document=document, outcome=outcome,
+        fach=payload.fach, category=payload.category,
+    )
     db.commit()
     for row in created:
         db.refresh(row)

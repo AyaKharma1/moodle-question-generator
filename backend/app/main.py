@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api import auth, documents, export, generation, questions
+from app.api import auth, bank, documents, export, generation, questions
 from app.config import get_settings
 
 logging.basicConfig(
@@ -28,8 +28,10 @@ app = FastAPI(
     title=settings.app_name,
     version=__version__,
     description=(
-        "Generate, review, approve and export Moodle-compatible XML questions "
-        "from lecture materials. Standalone - no live Moodle connection."
+        "Manage a Moodle question bank: import Moodle XML exports, see where "
+        "every question comes from, find duplicates and contradictions, and "
+        "export clean Moodle XML. Optional AI generation from lecture "
+        "materials. Standalone - no live Moodle connection."
     ),
 )
 
@@ -46,6 +48,7 @@ app.include_router(documents.router)
 app.include_router(generation.router)
 app.include_router(questions.router)
 app.include_router(export.router)
+app.include_router(bank.router)
 
 
 @app.get("/health", tags=["health"])
