@@ -96,6 +96,17 @@ docker compose exec backend python -m scripts.seed
 
 ## Running without Docker (local dev)
 
+**macOS / Linux, one command** (needs Python 3.11–3.13 and Node.js 18+):
+
+```bash
+bash start_mac.command     # or double-click it in Finder
+```
+
+It creates the Python environment, installs everything, migrates the SQLite
+database and starts backend and frontend on <http://localhost:5173>.
+
+Manual steps:
+
 ### Backend
 
 ```bash
