@@ -9,6 +9,7 @@ import {
   type Language,
   type QuestionType,
 } from "../api";
+import AiNav from "../components/AiNav.vue";
 
 const router = useRouter();
 const documents = ref<DocumentOut[]>([]);
@@ -17,6 +18,8 @@ const questionType = ref<QuestionType>("multiple_choice");
 const numQuestions = ref(5);
 const difficulty = ref<Difficulty>("medium");
 const language = ref<Language>("de");
+const fach = ref("");
+const category = ref("");
 
 const error = ref("");
 const info = ref("");
@@ -42,10 +45,12 @@ async function generate() {
       num_questions: numQuestions.value,
       difficulty: difficulty.value,
       language: language.value,
+      fach: fach.value.trim() || undefined,
+      category: category.value.trim() || undefined,
     });
     info.value =
       `${res.created.length} Frage(n) erstellt (Anbieter: ${res.provider}). ` +
-      `Jetzt im Bereich „Prüfen“ freigeben.`;
+      `Jetzt unter „Prüfen & freigeben“ kontrollieren.`;
     if (res.parse_errors.length) {
       info.value += ` Hinweis: ${res.parse_errors.length} ungültige Antwort(en) verworfen.`;
     }
@@ -59,7 +64,7 @@ async function generate() {
 </script>
 
 <template>
-  <h1>Fragen generieren</h1>
+  <AiNav />
   <div class="card">
     <div v-if="error" class="notice error">{{ error }}</div>
     <div v-if="info" class="notice success">{{ info }}</div>
@@ -101,7 +106,16 @@ async function generate() {
           <option value="en">Englisch</option>
         </select>
       </div>
+      <div>
+        <label for="fach">Fach (optional)</label>
+        <input id="fach" v-model="fach" placeholder="z. B. Computersysteme" />
+      </div>
+      <div>
+        <label for="cat">Kategorie (optional)</label>
+        <input id="cat" v-model="category" placeholder="z. B. PC-Hardware" />
+      </div>
     </div>
+    <div class="hint">Mit Fach und Kategorie landen die Fragen beim Export in der passenden Moodle-Kategorie.</div>
 
     <div class="row" style="margin-top: 1rem">
       <button :disabled="busy || documents.length === 0" @click="generate">

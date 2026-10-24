@@ -13,16 +13,18 @@ function onLogout() {
 <template>
   <div class="app-shell">
     <header class="topbar" v-if="authState.user">
-      <span class="brand">Moodle Fragen-Generator</span>
+      <router-link to="/" class="brand"><span class="logo">MF</span> Moodle-Fragenbank</router-link>
       <nav>
-        <router-link to="/">Dashboard</router-link>
-        <router-link to="/upload">Upload</router-link>
-        <router-link to="/generate">Generieren</router-link>
-        <router-link to="/review">Prüfen</router-link>
-        <router-link to="/export">Export</router-link>
+        <router-link to="/">Übersicht</router-link>
+        <router-link to="/import">Importieren</router-link>
+        <router-link to="/bank">Fragenbank</router-link>
+        <router-link to="/pruefung">Prüfung</router-link>
+        <router-link to="/verlauf">Verlauf</router-link>
+        <span class="sep" />
+        <router-link to="/ki" :class="{ 'router-link-active': $route.meta.ai }">KI-Generator</router-link>
       </nav>
       <span class="spacer" />
-      <span class="muted" style="color: #fff">{{ authState.user.email }}</span>
+      <span class="user">{{ authState.user.email }}</span>
       <button class="secondary small" @click="onLogout">Abmelden</button>
     </header>
     <main class="content">

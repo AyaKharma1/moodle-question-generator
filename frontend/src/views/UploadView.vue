@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api, ApiError, type DocumentOut } from "../api";
+import AiNav from "../components/AiNav.vue";
 
 const file = ref<File | null>(null);
 const documents = ref<DocumentOut[]>([]);
@@ -28,7 +29,7 @@ async function upload() {
   busy.value = true;
   try {
     const doc = await api.uploadDocument(file.value);
-    success.value = `„${doc.original_filename}“ wurde hochgeladen und verarbeitet.`;
+    success.value = `„${doc.original_filename}“ wurde hochgeladen. Weiter mit „Fragen generieren“.`;
     file.value = null;
     await refresh();
   } catch (e) {
@@ -44,7 +45,7 @@ function kb(n: number) {
 </script>
 
 <template>
-  <h1>Dokument hochladen</h1>
+  <AiNav />
   <div class="card">
     <p class="muted">Erlaubte Formate: PDF, TXT, DOCX. Maximale Größe: 10 MB.</p>
     <div v-if="error" class="notice error">{{ error }}</div>

@@ -33,7 +33,7 @@ async function submit() {
   <div style="max-width: 420px; margin: 3rem auto">
     <div class="card">
       <h1>{{ mode === "login" ? "Anmelden" : "Registrieren" }}</h1>
-      <p class="muted">Sicherer KI-gestützter Moodle-Fragengenerator</p>
+      <p class="muted">Moodle-Fragenbank: Fragen aus Moodle-Exporten verwalten</p>
 
       <div v-if="error" class="notice error">{{ error }}</div>
 

@@ -53,16 +53,18 @@ be tested and changed independently.
 |------------------------|----------------------------------------------------------------------|
 | `config.py`            | Environment-based settings (Pydantic Settings).                      |
 | `database.py`          | Engine, session, `Base`; parameterized queries only.                 |
-| `models.py`            | SQLAlchemy ORM (7 tables).                                           |
+| `models.py`            | SQLAlchemy ORM (9 tables).                                           |
 | `schemas/question.py`  | Domain model + structural validation rules per question type.        |
 | `schemas/api.py`       | HTTP request/response models.                                        |
 | `document_processing/` | `extractor.py` (text + magic bytes), `storage.py` (safe uploads).    |
 | `ai_generation/`       | `base.py` interface, `mock_provider.py`, `openai_provider.py`, `prompts.py`, `factory.py`, `service.py`. |
 | `question_validation/` | Grounding + duplicate detection (dependency-free, explainable).      |
 | `question_management/` | Persist generated questions; convert ORM ↔ domain.                   |
-| `moodle_export/`       | `exporter.py` — Moodle XML via `lxml`.                               |
+| `moodle_import/`       | `parser.py` — reads Moodle XML exports safely (no entities/DTD/network), applies category markers, fingerprints questions. |
+| `question_bank/`       | Import with de-duplication, overview tree, analysis (duplicates, contradictions, similar, broken). |
+| `moodle_export/`       | `exporter.py` — Moodle XML via `lxml`, grouped by category; imported questions round-trip from their raw XML. |
 | `security/`            | `auth.py` (bcrypt + JWT), `deps.py` (current user, ownership).       |
-| `api/`                 | Routers: `auth`, `documents`, `generation`, `questions`, `export`.   |
+| `api/`                 | Routers: `auth`, `documents`, `generation`, `questions`, `export`, `bank`. |
 
 ## Data model (normalized)
 
@@ -85,6 +87,26 @@ Key points:
 - `export_history` makes every export **traceable** (who, when, which ids).
 - Foreign keys use `ON DELETE CASCADE`/`SET NULL`; indexes on all FKs and
   `questions.status`.
+
+### Question bank tables
+
+```
+import_files ──1──< question_occurrences >──1── questions
+```
+
+- `import_files`: one row per imported Moodle XML file (name, optional Fach,
+  content hash so the same file is not imported twice).
+- `question_occurrences`: one row per appearance of a question in a file, with
+  the Fach/Kategorie it had there. A question found in three files is stored
+  once with three occurrences.
+- `questions.fingerprint` = hash of type + normalized text + the *set* of
+  answers and their correctness (answer order ignored);
+  `questions.text_fingerprint` = hash of type + text only. Equal fingerprint →
+  same question; equal text fingerprint but different fingerprint → the files
+  contradict each other.
+- `questions.raw_xml` keeps the original `<question>` element so the export
+  returns it to Moodle unchanged; `category_path` keeps the original Moodle
+  category path.
 
 ## Why these choices
 
