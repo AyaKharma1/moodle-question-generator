@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api import auth, bank, documents, export, generation, questions
+from app.api import auth, bank, documents, export, generation, planner, questions
 from app.config import get_settings
 
 logging.basicConfig(
@@ -49,6 +49,7 @@ app.include_router(generation.router)
 app.include_router(questions.router)
 app.include_router(export.router)
 app.include_router(bank.router)
+app.include_router(planner.router)
 
 
 @app.get("/health", tags=["health"])

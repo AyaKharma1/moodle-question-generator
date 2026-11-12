@@ -263,7 +263,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
-def _similar_pairs(questions: list[Question]) -> list[tuple[int, int, float]]:
+def similar_pairs(questions: list[Question], limit: int = MAX_SIMILAR_PAIRS) -> list[tuple[int, int, float]]:
     """Pairs with Jaccard similarity >= SIMILARITY_THRESHOLD.
 
     Uses prefix filtering instead of comparing every pair: with tokens sorted
@@ -293,7 +293,7 @@ def _similar_pairs(questions: list[Question]) -> list[tuple[int, int, float]]:
             score = _jaccard(token_sets[i], token_sets[j])
             if score >= t:
                 pairs.append((i, j, score))
-                if len(pairs) >= MAX_SIMILAR_PAIRS:
+                if len(pairs) >= limit:
                     return pairs
         for tok in prefix:
             index[tok].append(j)
@@ -345,7 +345,7 @@ def analyse(db: Session, owner: User, *, questions: list[Question] | None = None
     # 3. Different wording, (almost) the same content.
     similar = [
         {"a": brief(questions[i]), "b": brief(questions[j]), "score": round(score, 2)}
-        for i, j, score in _similar_pairs(questions)
+        for i, j, score in similar_pairs(questions)
     ]
 
     # 4. Broken questions.
