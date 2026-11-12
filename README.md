@@ -38,6 +38,23 @@ What the question bank does:
   referenced but missing from the file, empty text.
 - **Category size check:** Moodle draws random questions per category; the
   overview shows how many identical questions two students get on average.
+- **Search that finds everything:** one search box (also in the top bar) looks
+  through question text, answers, sub-questions, feedback, Fach, Kategorie and
+  file names. All words must match; German case and umlauts are ignored.
+  Filters show counts, results are sorted and paged, hits are highlighted and
+  every question says where it matched. Select the page, all hits, or a random
+  sample without problem questions. Tested with ~5,700 questions in 30 files:
+  searches answer in well under 0.2 s.
+- **Test planner:** every student should get different questions and nobody
+  the same or a near-identical one twice. Moodle draws at random from a
+  category, so the planner builds and checks the *pool* it draws from: no
+  description items, contradicting or broken questions, similar questions
+  thinned out across all categories of the test, optionally only questions
+  never exported before. It reports the expected overlap (`k²/n` shared
+  questions between two students), simulates the draw for N students, flags
+  pools that are too small and exports the clean pool (into its own category
+  folder, so it does not mix with the originals in Moodle) plus a CSV with a
+  fixed, balanced distribution.
 - **Faithful round-trip:** imported questions are exported exactly as Moodle
   wrote them (images, grading settings, and types such as essay or matching).
   They are edited in Moodle, not in this app.

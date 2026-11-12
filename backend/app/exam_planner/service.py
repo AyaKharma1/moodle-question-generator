@@ -52,6 +52,11 @@ class Slot:
         return f"{self.fach} / {self.category}" if self.fach else self.category
 
 
+def de(number: float) -> str:
+    """German decimal comma for texts shown to the user."""
+    return str(number).replace(".", ",")
+
+
 def level_for(pool: int, per_student: int) -> str:
     """Same thresholds the overview page uses."""
     if pool < per_student:
@@ -171,17 +176,31 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
     slot_of = {q.id: i for i, pool in enumerate(pools) for q in pool}
     by_id = {q.id: q for q in everyone}
     alive = set(by_id)
-    for a, b, _score in sorted(
-        ((everyone[i].id, everyone[j].id, s) for i, j, s in similar_pairs(everyone, SIMILAR_LIMIT)),
-        key=lambda t: (t[0], t[1]),
-    ):
+    pairs = sorted(((everyone[i].id, everyone[j].id) for i, j, _s in similar_pairs(everyone, SIMILAR_LIMIT)))
+    neighbours: dict[int, set[int]] = {}
+    for a, b in pairs:
+        neighbours.setdefault(a, set()).add(b)
+        neighbours.setdefault(b, set()).add(a)
+
+    def spare(qid: int) -> int:
+        return sum(1 for x in pools[slot_of[qid]] if x.id in alive) - slots[slot_of[qid]].count
+
+    dropped: list[int] = []
+    for a, b in pairs:
         if a not in alive or b not in alive:
             continue
         # drop the one from the category with more spare questions, then the newer one
-        spare = lambda qid: sum(1 for x in pools[slot_of[qid]] if x.id in alive) - slots[slot_of[qid]].count
-        victim, keeper = (a, b) if (spare(a), a) > (spare(b), b) else (b, a)
+        victim = a if (spare(a), a) > (spare(b), b) else b
         alive.discard(victim)
-        removed[slot_of[victim]][victim] = f"Zu ähnlich zu „{by_id[keeper].name}“"
+        dropped.append(victim)
+    # Greedy dropping can overshoot: a question dropped for a partner that was
+    # dropped later anyway is free again. Take those back, so the pool stays as
+    # large as it can while no two kept questions are similar.
+    for victim in dropped:
+        if not (neighbours[victim] & alive):
+            alive.add(victim)
+        else:
+            removed[slot_of[victim]][victim] = f"Zu ähnlich zu „{by_id[next(iter(sorted(neighbours[victim] & alive)))].name}“"
     pools = [[q for q in pool if q.id in alive] for pool in pools]
 
     # 3. per-category report
@@ -203,7 +222,7 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
             warnings.append(f"„{slot.label}“: nur {len(pool)} brauchbare Fragen, aber {slot.count} pro Person nötig.")
         elif level == "small":
             warnings.append(f"„{slot.label}“: Pool zu klein. Zwei Studierende haben im Schnitt "
-                            f"{report['shared_expected']} gleiche Fragen. Empfohlen: mindestens {4 * slot.count}.")
+                            f"{de(report['shared_expected'])} gleiche Fragen. Empfohlen: mindestens {4 * slot.count}.")
         elif level == "tight":
             warnings.append(f"„{slot.label}“: Pool knapp. Empfohlen: mindestens {4 * slot.count}.")
 

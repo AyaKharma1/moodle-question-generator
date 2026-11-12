@@ -202,6 +202,7 @@ export interface BriefQuestion {
 export interface BankAnalysis {
   counts: { exact: number; conflicts: number; similar: number; issues: number };
   limit: number;
+  similar_capped: boolean;
   exact: { question: BriefQuestion; count: number }[];
   conflicts: { questions: BriefQuestion[] }[];
   similar: { a: BriefQuestion; b: BriefQuestion; score: number }[];

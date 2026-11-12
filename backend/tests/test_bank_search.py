@@ -263,7 +263,7 @@ def test_the_analysis_follows_every_change_of_the_bank(auth_client):
 def test_analysis_lists_are_trimmed_but_counts_stay_true(auth_client):
     _import(auth_client, WS24, SS25, DB24)
     trimmed = auth_client.get("/api/bank/analysis", params={"limit": 1}).json()
-    assert trimmed["limit"] == 1
+    assert trimmed["limit"] == 1 and trimmed["similar_capped"] is False
     assert trimmed["counts"] == {"exact": 2, "conflicts": 1, "similar": 1, "issues": 3}
     assert all(len(trimmed[k]) <= 1 for k in ("exact", "conflicts", "similar", "issues"))
     assert len(auth_client.get("/api/bank/analysis").json()["issues"]) == 3     # default limit is generous
@@ -291,3 +291,12 @@ def test_cache_is_kept_per_user(auth_client, make_user_client):
     assert auth_client.get("/api/bank/analysis").json()["counts"]["conflicts"] == 1
     other = make_user_client("other@example.com")
     assert other.get("/api/bank/analysis").json()["counts"] == {"exact": 0, "conflicts": 0, "similar": 0, "issues": 0}
+
+
+def test_similar_count_is_marked_as_lower_bound_when_the_search_stops(auth_client, monkeypatch):
+    from app.question_bank import service
+    monkeypatch.setattr(service, "MAX_SIMILAR_PAIRS", 1)
+    service.clear_analysis_cache()
+    _import(auth_client, WS24, SS25, DB24)
+    assert auth_client.get("/api/bank/analysis").json()["similar_capped"] is True
+    assert auth_client.get("/api/bank/overview").json()["totals"]["similar_capped"] is True

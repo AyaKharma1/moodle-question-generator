@@ -61,10 +61,11 @@ be tested and changed independently.
 | `question_validation/` | Grounding + duplicate detection (dependency-free, explainable).      |
 | `question_management/` | Persist generated questions; convert ORM ↔ domain.                   |
 | `moodle_import/`       | `parser.py` — reads Moodle XML exports safely (no entities/DTD/network), applies category markers, fingerprints questions. |
-| `question_bank/`       | Import with de-duplication, overview tree, analysis (duplicates, contradictions, similar, broken). |
+| `question_bank/`       | `service.py` import with de-duplication, overview tree, analysis (duplicates, contradictions, similar, broken) cached per bank state; `search.py` full-text search, filters, facets. |
+| `exam_planner/`        | Clean question pool per category, fairness numbers, simulation of N students, CSV distribution. |
 | `moodle_export/`       | `exporter.py` — Moodle XML via `lxml`, grouped by category; imported questions round-trip from their raw XML. |
 | `security/`            | `auth.py` (bcrypt + JWT), `deps.py` (current user, ownership).       |
-| `api/`                 | Routers: `auth`, `documents`, `generation`, `questions`, `export`, `bank`. |
+| `api/`                 | Routers: `auth`, `documents`, `generation`, `questions`, `export`, `bank`, `planner`. |
 
 ## Data model (normalized)
 
@@ -104,6 +105,15 @@ import_files ──1──< question_occurrences >──1── questions
   `questions.text_fingerprint` = hash of type + text only. Equal fingerprint →
   same question; equal text fingerprint but different fingerprint → the files
   contradict each other.
+- `questions.search_text` holds the case-folded plain text of everything in a
+  question (name, text, answers, sub-questions, feedback). Query words are
+  folded the same way in Python, so umlauts and ß behave identically on SQLite
+  and Postgres. Fach, Kategorie and file names are matched against the few
+  distinct values and passed to SQL as `IN` lists.
+- The analysis (duplicates, contradictions, similar, broken) looks at the whole
+  bank. It is cached per user and recomputed only when a cheap fingerprint of
+  the bank's rows changes; the browser gets hints per question and trimmed
+  lists with true totals instead of the whole analysis.
 - `questions.raw_xml` keeps the original `<question>` element so the export
   returns it to Moodle unchanged; `category_path` keeps the original Moodle
   category path.

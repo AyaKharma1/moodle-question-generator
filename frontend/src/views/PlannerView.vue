@@ -168,7 +168,7 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
         <div class="chips">
           <span class="chip"><strong>{{ s.pool_size }}</strong> brauchbare Fragen im Pool<template v-if="s.pool_before !== s.pool_size"> (von {{ s.pool_before }})</template></span>
           <span class="chip"><strong>{{ s.count }}</strong> pro Person</span>
-          <span v-if="s.shared_expected !== null" class="chip">zwei Personen haben im Schnitt <strong>{{ s.shared_expected }}</strong> gleiche</span>
+          <span v-if="s.shared_expected !== null" class="chip">zwei Personen haben im Schnitt <strong>{{ formatNumber(s.shared_expected) }}</strong> gleiche</span>
           <span class="chip">empfohlen: mindestens <strong>{{ s.recommended_min }}</strong></span>
         </div>
         <div class="bar" style="margin-top: 0.5rem" :title="`${s.pool_size} von empfohlen ${s.recommended_min}`">
@@ -194,7 +194,7 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
         <thead><tr><th /><th>Zufällig<br /><span class="muted" style="font-weight: 400; text-transform: none">(so arbeitet Moodle)</span></th>
           <th>Ausgewogener Plan<br /><span class="muted" style="font-weight: 400; text-transform: none">(feste Verteilung, CSV)</span></th></tr></thead>
         <tbody>
-          <tr><td>Gleiche Fragen bei zwei Personen, Ø</td><td>{{ plan.random.avg_overlap }}</td><td>{{ plan.balanced.avg_overlap }}</td></tr>
+          <tr><td>Gleiche Fragen bei zwei Personen, Ø</td><td>{{ formatNumber(plan.random.avg_overlap) }}</td><td>{{ formatNumber(plan.balanced.avg_overlap) }}</td></tr>
           <tr><td>Gleiche Fragen bei zwei Personen, höchstens</td><td>{{ plan.random.max_overlap }}</td><td>{{ plan.balanced.max_overlap }}</td></tr>
           <tr><td>Verschiedene Fragensets</td><td>{{ formatNumber(plan.random.unique_papers) }} von {{ formatNumber(plan.students) }}</td>
             <td>{{ formatNumber(plan.balanced.unique_papers) }} von {{ formatNumber(plan.students) }}</td></tr>

@@ -38,9 +38,10 @@ function where(q: BriefQuestion): string {
 // "Zeige die ersten 300 von 5.376": the lists are cut on the server for big banks
 const trimmed = computed(() => {
   const a = analysis.value;
-  const shown = (n: number) => (a && n > a.limit ? `Zeige die ersten ${formatNumber(a.limit)} von ${formatNumber(n)}.` : "");
+  const shown = (n: number, atLeast = false) =>
+    a && n > a.limit ? `Zeige die ersten ${formatNumber(a.limit)} von ${atLeast ? "mindestens " : ""}${formatNumber(n)}.` : "";
   return {
-    conflicts: shown(a?.counts.conflicts ?? 0), similar: shown(a?.counts.similar ?? 0),
+    conflicts: shown(a?.counts.conflicts ?? 0), similar: shown(a?.counts.similar ?? 0, a?.similar_capped),
     issues: shown(a?.counts.issues ?? 0), exact: shown(a?.counts.exact ?? 0),
   };
 });
@@ -60,7 +61,7 @@ function bankLink(q: BriefQuestion) {
   <template v-else-if="analysis">
     <div class="tabs">
       <button v-for="t in tabs" :key="t.key" :class="{ active: tab === t.key }" @click="tab = t.key">
-        {{ t.label }} <span class="badge" :class="t.count ? 'neutral' : 'ok'">{{ t.count }}</span>
+        {{ t.label }} <span class="badge" :class="t.count ? 'neutral' : 'ok'">{{ formatNumber(t.count) }}{{ t.key === "similar" && analysis.similar_capped ? "+" : "" }}</span>
       </button>
     </div>
 

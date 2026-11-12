@@ -201,3 +201,21 @@ def test_planner_only_sees_own_questions(auth_client, make_user_client):
 
 def test_planner_requires_login(client):
     assert client.post("/api/planner/plan", json={"slots": [_slot("X", 1)]}).status_code == 401
+
+
+def test_similar_questions_are_thinned_out_without_overshooting(auth_client):
+    # u is similar to both v and w, but v and w are not similar to each other:
+    #   u = w1..w20, v = u without w1..w3, w = u without w18..w20
+    words = [f"wort{i:02d}" for i in range(1, 21)]
+    u, v, w = " ".join(words), " ".join(words[3:]), " ".join(words[:17])
+    _upload(auth_client, "a.xml", _quiz("$course$/top/M/A", ("v", v), ("fillerA", "ganz anderer Text eins alpha"),
+                                         ("fillerB", "noch ein Text zwei beta"), ("fillerC", "dritter Text drei gamma")))
+    _upload(auth_client, "b.xml", _quiz("$course$/top/M/B", ("w", w), ("u", u)))
+    plan = _plan(auth_client, [_slot("A", 1, "M"), _slot("B", 1, "M")], students=10, seed=1)
+    a, b = plan["slots"]
+    # v is only dropped when u is kept; u goes (it is similar to w too), so v comes back
+    assert [p["name"] for p in a["pool"]] == ["v", "fillerA", "fillerB", "fillerC"] and a["removed"] == []
+    assert [p["name"] for p in b["pool"]] == ["w"]
+    assert [r["name"] for r in b["removed"]] == ["u"] and b["removed"][0]["reason"].startswith("Zu ähnlich zu")
+    kept = {p["name"] for s in plan["slots"] for p in s["pool"]}
+    assert not ({"u", "v"} <= kept or {"u", "w"} <= kept)                      # no two similar questions together

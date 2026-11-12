@@ -383,8 +383,11 @@ def analysis_counts(analysis: dict) -> dict:
 
 def trimmed_analysis(analysis: dict, limit: int) -> dict:
     """The analysis with every list cut to ``limit`` entries, plus the real counts."""
+    counts = analysis_counts(analysis)
     return {**{key: items[:limit] for key, items in analysis.items()},
-            "counts": analysis_counts(analysis), "limit": limit}
+            "counts": counts, "limit": limit,
+            # the similar-question search stops at MAX_SIMILAR_PAIRS, so that count is a lower bound
+            "similar_capped": counts["similar"] >= MAX_SIMILAR_PAIRS}
 
 
 def flag_map(analysis: dict) -> dict[int, list[dict]]:
