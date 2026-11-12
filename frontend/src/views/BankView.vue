@@ -97,7 +97,7 @@ const activeFilters = computed(() => {
     q.type && { key: "type", label: `Typ: ${typeLabel(q.type)}` },
     q.source && { key: "source", label: q.source === "ai" ? "Nur KI-generiert" : "Nur aus Moodle importiert" },
     q.flag && { key: "flag", label: `Hinweis: ${FLAG_LABELS[q.flag] ?? q.flag}` },
-    q.exported && { key: "exported", label: q.exported === "no" ? "Noch nie exportiert" : "Schon exportiert" },
+    q.exported && { key: "exported", label: q.exported === "no" ? "Noch nie aus der App exportiert" : "Schon aus der App exportiert" },
   ].filter(Boolean) as { key: string; label: string }[];
 });
 
@@ -271,11 +271,12 @@ function exportSelected() {
         </select>
       </div>
       <div>
-        <label for="exported">Schon verwendet?</label>
-        <select id="exported" :value="query.exported ?? ''" @change="setQuery({ exported: ($event.target as HTMLSelectElement).value })">
+        <label for="exported" title="Zählt nur Exporte aus dieser App (siehe Verlauf), nicht Tests in Moodle.">Aus der App exportiert?</label>
+        <select id="exported" :value="query.exported ?? ''" title="Zählt nur Exporte aus dieser App (siehe Verlauf), nicht Tests in Moodle."
+                @change="setQuery({ exported: ($event.target as HTMLSelectElement).value })">
           <option value="">Egal</option>
-          <option value="no">Noch nie exportiert</option>
-          <option value="yes">Schon exportiert</option>
+          <option value="no">Nein, noch nie</option>
+          <option value="yes">Ja, schon einmal</option>
         </select>
       </div>
       <div>

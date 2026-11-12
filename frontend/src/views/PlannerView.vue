@@ -133,7 +133,7 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
       <div>
         <label style="margin-top: 1.9rem; display: flex; gap: 0.5rem; align-items: center; font-weight: 400">
           <input v-model="onlyUnused" type="checkbox" />
-          Nur Fragen, die noch in keinem Export waren
+          Nur Fragen, die noch nie aus dieser App exportiert wurden
         </label>
       </div>
     </div>
