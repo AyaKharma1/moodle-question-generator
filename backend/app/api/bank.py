@@ -27,13 +27,16 @@ from app.question_bank.search import (
 )
 from app.question_bank.service import (
     DuplicateFileError,
-    analyse,
+    analysis_cached,
+    check_selection,
     delete_import_file,
+    flag_map,
+    trimmed_analysis,
     export_map,
     import_moodle_file,
     overview,
 )
-from app.schemas.api import BankPage, ImportFileOut, ImportSummaryOut, QuestionOut
+from app.schemas.api import BankPage, ImportFileOut, ImportSummaryOut, QuestionOut, SelectionCheckIn
 from app.security.deps import get_current_user
 
 logger = logging.getLogger("app.bank")
@@ -126,9 +129,20 @@ def bank_overview(
 
 @router.get("/analysis")
 def bank_analysis(
-    db: Session = Depends(get_db), current: User = Depends(get_current_user)
+    limit: int = Query(default=300, ge=1, le=5000),
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
 ) -> dict:
-    return analyse(db, current)
+    """Findings per kind, each list cut to ``limit`` entries; ``counts`` has the real totals."""
+    return trimmed_analysis(analysis_cached(db, current), limit)
+
+
+@router.post("/check-selection")
+def bank_check_selection(
+    payload: SelectionCheckIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+) -> dict:
+    """Do the picked questions contradict or nearly repeat each other?"""
+    return check_selection(analysis_cached(db, current), set(payload.ids))
 
 
 # ---------------------------------------------------------------- search
@@ -150,7 +164,7 @@ def bank_filter(
     f = BankFilter(q=q, fach=fach, category=category, import_file_id=file, source=source,
                    qtype=type, flag=flag, exported=exported)
     if flag:
-        f.flagged_ids = flagged_question_ids(analyse(db, current), flag)
+        f.flagged_ids = flagged_question_ids(analysis_cached(db, current), flag)
     if exported:
         f.exported_ids = set(export_map(db, current))
     return f
@@ -179,8 +193,10 @@ def search_questions(
     ).all()
 
     exports = export_map(db, current)
+    flags = flag_map(analysis_cached(db, current)) if rows else {}
     return BankPage(
-        items=[QuestionOut.model_validate(r).model_copy(update={"exported_in": exports.get(r.id, [])})
+        items=[QuestionOut.model_validate(r).model_copy(
+                   update={"exported_in": exports.get(r.id, []), "flags": flags.get(r.id, [])})
                for r in rows],
         total=total, page=page, page_size=page_size, pages=pages,
         facets=facets(db, current, f),
@@ -210,6 +226,6 @@ def selectable_ids(
     truncated = len(ids) > MAX_SELECTABLE
     ids = ids[:MAX_SELECTABLE]
     if exclude_flagged:
-        flagged = all_flagged_ids(analyse(db, current))
+        flagged = all_flagged_ids(analysis_cached(db, current))
         ids = [i for i in ids if i not in flagged]
     return {"ids": ids, "total": len(ids), "truncated": truncated}

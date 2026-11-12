@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api, type BankAnalysis, type BriefQuestion } from "../api";
-import { answerText, typeLabel } from "../bank";
+import { answerText, formatNumber, typeLabel } from "../bank";
 
 type Tab = "conflicts" | "similar" | "exact" | "issues";
 
@@ -14,8 +14,8 @@ onMounted(async () => {
     analysis.value = await api.analysis();
     const a = analysis.value;
     // Open the most important tab that actually has findings.
-    tab.value = a.conflicts.length ? "conflicts" : a.similar.length ? "similar"
-      : a.issues.length ? "issues" : a.exact.length ? "exact" : "conflicts";
+    tab.value = a.counts.conflicts ? "conflicts" : a.counts.similar ? "similar"
+      : a.counts.issues ? "issues" : a.counts.exact ? "exact" : "conflicts";
   } finally {
     loading.value = false;
   }
@@ -24,16 +24,26 @@ onMounted(async () => {
 const tabs = computed(() => {
   const a = analysis.value;
   return [
-    { key: "conflicts" as Tab, label: "Widersprüche", count: a?.conflicts.length ?? 0 },
-    { key: "similar" as Tab, label: "Ähnliche Fragen", count: a?.similar.length ?? 0 },
-    { key: "issues" as Tab, label: "Fehlerhafte Fragen", count: a?.issues.length ?? 0 },
-    { key: "exact" as Tab, label: "In mehreren Dateien", count: a?.exact.length ?? 0 },
+    { key: "conflicts" as Tab, label: "Widersprüche", count: a?.counts.conflicts ?? 0 },
+    { key: "similar" as Tab, label: "Ähnliche Fragen", count: a?.counts.similar ?? 0 },
+    { key: "issues" as Tab, label: "Fehlerhafte Fragen", count: a?.counts.issues ?? 0 },
+    { key: "exact" as Tab, label: "In mehreren Dateien", count: a?.counts.exact ?? 0 },
   ];
 });
 
 function where(q: BriefQuestion): string {
   return q.origins.map((o) => `${o.filename} (${o.category ?? "–"})`).join(", ") || "KI-generiert";
 }
+
+// "Zeige die ersten 300 von 5.376": the lists are cut on the server for big banks
+const trimmed = computed(() => {
+  const a = analysis.value;
+  const shown = (n: number) => (a && n > a.limit ? `Zeige die ersten ${formatNumber(a.limit)} von ${formatNumber(n)}.` : "");
+  return {
+    conflicts: shown(a?.counts.conflicts ?? 0), similar: shown(a?.counts.similar ?? 0),
+    issues: shown(a?.counts.issues ?? 0), exact: shown(a?.counts.exact ?? 0),
+  };
+});
 
 function bankLink(q: BriefQuestion) {
   return { name: "bank", query: { q: q.name ?? q.text.slice(0, 40) } };
@@ -42,7 +52,7 @@ function bankLink(q: BriefQuestion) {
 
 <template>
   <div class="page-head">
-    <h1>Prüfung der Fragenbank</h1>
+    <h1>Qualität der Fragenbank</h1>
     <p>Probleme, die automatisch gefunden wurden, bevor Fragen in einem Test landen.</p>
   </div>
 
@@ -60,6 +70,7 @@ function bankLink(q: BriefQuestion) {
         Dieselbe Frage steht in verschiedenen Dateien, aber mit <strong>anderen richtigen Antworten</strong>.
         Meist wurde die Frage in einer Datei korrigiert und in der anderen nicht. Bitte in Moodle klären, welche Version gilt.
       </p>
+      <p v-if="trimmed.conflicts" class="notice info">{{ trimmed.conflicts }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
       <p v-if="!analysis.conflicts.length" class="notice success">Keine Widersprüche gefunden. ✓</p>
       <div v-for="(g, i) in analysis.conflicts" :key="i" class="card">
         <h3>„{{ g.questions[0].text }}“</h3>
@@ -80,6 +91,7 @@ function bankLink(q: BriefQuestion) {
         Unterschiedlich formuliert, inhaltlich aber fast gleich. Liegen beide in derselben Kategorie, kann eine
         Person in einem Test zweimal fast dieselbe Frage bekommen. Entfernen Sie eine davon in Moodle oder verschieben Sie sie in eine andere Kategorie.
       </p>
+      <p v-if="trimmed.similar" class="notice info">{{ trimmed.similar }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
       <p v-if="!analysis.similar.length" class="notice success">Keine ähnlichen Fragen gefunden. ✓</p>
       <div v-for="p in analysis.similar" :key="p.a.id + '-' + p.b.id" class="card">
         <div class="card-head" style="margin-bottom: 0.5rem">
@@ -99,6 +111,7 @@ function bankLink(q: BriefQuestion) {
     <!-- broken -->
     <template v-if="tab === 'issues'">
       <p class="muted">Fragen, die in Moodle nicht richtig funktionieren würden.</p>
+      <p v-if="trimmed.issues" class="notice info">{{ trimmed.issues }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
       <p v-if="!analysis.issues.length" class="notice success">Keine fehlerhaften Fragen gefunden. ✓</p>
       <div v-else class="card"><table class="list">
         <thead><tr><th>Frage</th><th>Problem</th><th>Herkunft</th></tr></thead>
@@ -121,6 +134,7 @@ function bankLink(q: BriefQuestion) {
         Diese Fragen kommen in mehreren Dateien identisch vor (auch wenn die Antworten anders sortiert sind).
         Das ist <strong>kein Fehler</strong>: Die Fragenbank speichert sie nur einmal, und beim Export entsteht kein Duplikat.
       </p>
+      <p v-if="trimmed.exact" class="notice info">{{ trimmed.exact }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
       <p v-if="!analysis.exact.length" class="notice success">Keine Frage kommt mehrfach vor.</p>
       <div v-else class="card"><table class="list">
         <thead><tr><th>Frage</th><th>Dateien</th></tr></thead>

@@ -133,7 +133,7 @@ button.small, .button.small { padding: 0.32rem 0.6rem; font-size: 0.83rem; }
 
 .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-.filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 0.6rem; align-items: end; }
+.filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.6rem; align-items: end; }
 .filters label { margin-top: 0; }
 
 /* ---------- badges & chips ---------- */
@@ -258,12 +258,33 @@ table.list tr:last-child td { border-bottom: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 800px) {
-  .filters { grid-template-columns: 1fr 1fr; }
   .flow { grid-template-columns: 1fr 1fr; }
   .compare { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
-  .grid-2, .filters, .flow { grid-template-columns: 1fr; }
+  .grid-2, .flow { grid-template-columns: 1fr; }
   .tree-cat { grid-template-columns: 1fr; gap: 0.25rem; }
   .selection-bar input { width: 100%; }
 }
+
+/* ---------- search ---------- */
+.searchbox { font-size: 1.05rem; padding: 0.75rem 0.9rem; border-radius: 10px; }
+mark { background: #ffe58a; color: inherit; border-radius: 3px; padding: 0 0.1em; }
+.toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0 0 0.75rem; }
+.toolbar .spacer { flex: 1; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0 5rem; }
+.chip button.ghost { padding: 0 0.3rem; line-height: 1; font-size: 1rem; }
+
+a.cta { display: flex; align-items: center; gap: 1rem; text-decoration: none; color: inherit; border-color: #c9dcf6; background: var(--primary-soft); }
+a.cta:hover { border-color: var(--primary); }
+a.cta .icon { font-size: 1.8rem; }
+a.cta > span:nth-child(2) { flex: 1; }
+
+/* ---------- test planner ---------- */
+.plan-row { display: grid; grid-template-columns: 1fr 140px auto; gap: 0.6rem; align-items: end; margin-bottom: 0.5rem; }
+.compare-table td:first-child { color: var(--muted); }
+.compare-table th:not(:first-child), .compare-table td:not(:first-child) { text-align: right; white-space: nowrap; }
+.bar { height: 8px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--primary); }
+.topsearch { width: 220px; padding: 0.4rem 0.7rem; border-radius: 999px; background: var(--bg); }
+@media (max-width: 640px) { .plan-row { grid-template-columns: 1fr; } .topsearch { width: 100%; } }

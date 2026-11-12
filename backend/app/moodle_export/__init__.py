@@ -5,4 +5,5 @@ from app.moodle_export.exporter import (  # noqa: F401
     export_bank,
     export_questions,
     question_to_element,
+    with_prefix,
 )

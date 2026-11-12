@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api, type BankOverview } from "../api";
-import { checkRandomDraw, type DrawLevel } from "../bank";
+import { checkRandomDraw, formatNumber, LEVEL_BADGE as levelBadge, LEVEL_TEXT as levelText } from "../bank";
 
 const overview = ref<BankOverview | null>(null);
 const loading = ref(true);
@@ -15,18 +15,6 @@ onMounted(async () => {
   }
 });
 
-const levelText: Record<DrawLevel, string> = {
-  impossible: "zu wenige Fragen",
-  small: "zu klein",
-  tight: "knapp",
-  good: "gut",
-};
-const levelBadge: Record<DrawLevel, string> = {
-  impossible: "danger",
-  small: "danger",
-  tight: "warn",
-  good: "ok",
-};
 </script>
 
 <template>
@@ -56,12 +44,21 @@ const levelBadge: Record<DrawLevel, string> = {
         <div class="value">{{ overview.totals.conflicts }}</div><div class="label">Widersprüche</div>
       </router-link>
       <router-link to="/pruefung" class="stat" :class="overview.totals.similar ? 'violet' : 'ok'">
-        <div class="value">{{ overview.totals.similar }}</div><div class="label">Ähnliche Fragen</div>
+        <div class="value">{{ formatNumber(overview.totals.similar) }}{{ overview.totals.similar_capped ? "+" : "" }}</div><div class="label">Ähnliche Fragen</div>
       </router-link>
       <router-link to="/pruefung" class="stat" :class="overview.totals.issues ? 'warn' : 'ok'">
         <div class="value">{{ overview.totals.issues }}</div><div class="label">Fehlerhafte Fragen</div>
       </router-link>
     </div>
+
+    <router-link to="/planer" class="card cta">
+      <span class="icon">🎯</span>
+      <span>
+        <strong>Test planen</strong><br />
+        <span class="muted">Fairen Fragenpool bauen: Jede Person bekommt andere Fragen, nichts doppelt oder fast gleich.</span>
+      </span>
+      <span class="button small">Planen →</span>
+    </router-link>
 
     <div v-if="overview.totals.duplicates" class="notice info">
       {{ overview.totals.duplicates }} Frage(n) kommen in mehreren Dateien vor. Sie sind in der Fragenbank

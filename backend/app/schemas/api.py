@@ -99,6 +99,7 @@ class QuestionOut(BaseModel):
     moodle_type: Optional[str] = None
     origins: list[OriginOut] = []
     exported_in: list[str] = []
+    flags: list[dict] = []
 
 
 class GenerateRequest(BaseModel):
@@ -126,6 +127,8 @@ class ReviewAction(BaseModel):
 class ExportRequest(BaseModel):
     question_ids: list[int] = Field(min_length=1)
     filename: Optional[str] = Field(default=None, max_length=100)
+    # Puts all exported questions into their own category tree below this name.
+    category_prefix: Optional[str] = Field(default=None, max_length=200)
 
 
 # ---------------- question bank ----------------
@@ -161,3 +164,7 @@ class BankPage(BaseModel):
     page_size: int
     pages: int
     facets: dict
+
+
+class SelectionCheckIn(BaseModel):
+    ids: list[int] = Field(max_length=5000)

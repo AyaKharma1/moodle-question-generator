@@ -31,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Question, QuestionStatus, User
-from app.question_bank.service import analyse, export_map, similar_pairs
+from app.question_bank.service import analysis_cached, export_map, similar_pairs
 
 MAX_STUDENTS = 2000
 STATS_SAMPLE = 400          # students compared pairwise (400 -> 79,800 pairs)
@@ -136,7 +136,7 @@ def paper_stats(papers: list[tuple[int, ...]], all_ids: list[int]) -> dict:
 def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
                seed: int | None, only_unused: bool) -> dict:
     seed = seed if seed is not None else random.SystemRandom().randrange(1, 2**31)
-    analysis = analyse(db, owner)
+    analysis = analysis_cached(db, owner)
     conflicted = {q["id"] for g in analysis["conflicts"] for q in g["questions"]}
     broken = {i["question"]["id"]: i["problems"][0] for i in analysis["issues"]}
     used = set(export_map(db, owner)) if only_unused else set()

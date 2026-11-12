@@ -179,6 +179,23 @@ def category_path_for(fach: Optional[str], category: Optional[str]) -> Optional[
     return "$course$/top/" + "/".join(segments) if segments else None
 
 
+def with_prefix(path: str | None, prefix: str | None) -> str | None:
+    """Put ``prefix`` right below the root of a Moodle category path.
+
+    ``$module$/top/Praktikum/Kapitel 2`` + ``Prüfung WS 25/26`` becomes
+    ``$module$/top/Prüfung WS 25//26/Praktikum/Kapitel 2``. Questions then land in
+    their own categories instead of mixing with the originals when imported
+    into the same Moodle course (Moodle does not detect duplicates).
+    """
+    prefix = (prefix or "").strip()
+    if not prefix or not path:
+        return path
+    head, sep, rest = path.partition("/top/")
+    if not sep:
+        return path
+    return f"{head}/top/{prefix.replace('/', '//')}/{rest}"
+
+
 def _category_element(path: str):
     question = etree.Element("question")
     question.set("type", "category")

@@ -14,10 +14,11 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
@@ -42,7 +43,7 @@ from app.moodle_import import (
 
 # Two questions whose word sets overlap this much count as "similar".
 SIMILARITY_THRESHOLD = 0.8
-MAX_SIMILAR_PAIRS = 200
+MAX_SIMILAR_PAIRS = 5000
 
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
 # Types where "has a correct answer" is a meaningful check.
@@ -227,7 +228,7 @@ def overview(db: Session, owner: User) -> dict:
     for q in questions:
         tree[q.fach or "Ohne Fach"][q.category or NO_CATEGORY] += 1
 
-    analysis = analyse(db, owner, questions=questions)
+    analysis = analysis_cached(db, owner)
     return {
         "totals": {
             "questions": len(questions),
@@ -237,6 +238,8 @@ def overview(db: Session, owner: User) -> dict:
             "duplicates": len(analysis["exact"]),
             "conflicts": len(analysis["conflicts"]),
             "similar": len(analysis["similar"]),
+            # the search stops at MAX_SIMILAR_PAIRS; the UI then shows "5.000+"
+            "similar_capped": len(analysis["similar"]) >= MAX_SIMILAR_PAIRS,
             "issues": len(analysis["issues"]),
         },
         "tree": [
@@ -321,6 +324,97 @@ def _issues(q: Question) -> list[str]:
     if missing:
         problems.append("Bild fehlt in der Datei: " + ", ".join(missing))
     return problems
+
+
+# ------------------------------------------------------------ cached analysis
+#
+# The analysis looks at the whole bank, so it costs about a second with
+# thousands of questions. It is needed by the overview, the problem filter,
+# the hints on every question and the test planner, so it is computed once per
+# state of the bank. The state is a cheap fingerprint of the bank's rows: any
+# import, removal or edit changes it and the next request recomputes.
+
+_cache: dict[int, tuple[tuple, dict]] = {}
+_cache_lock = threading.Lock()
+
+
+def clear_analysis_cache() -> None:
+    with _cache_lock:
+        _cache.clear()
+
+
+def bank_version(db: Session, owner: User) -> tuple:
+    questions = db.execute(
+        select(func.count(Question.id), func.coalesce(func.max(Question.id), 0),
+               func.coalesce(func.sum(Question.id), 0), func.max(Question.updated_at))
+        .where(Question.owner_id == owner.id)
+    ).one()
+    occurrences = db.execute(
+        select(func.count(QuestionOccurrence.id), func.coalesce(func.max(QuestionOccurrence.id), 0))
+        .join(Question, Question.id == QuestionOccurrence.question_id)
+        .where(Question.owner_id == owner.id)
+    ).one()
+    files = db.execute(
+        select(func.count(ImportFile.id), func.coalesce(func.max(ImportFile.id), 0))
+        .where(ImportFile.owner_id == owner.id)
+    ).one()
+    return (*questions, *occurrences, *files)
+
+
+def analysis_cached(db: Session, owner: User) -> dict:
+    """``analyse`` for the current state of the bank, recomputed only after a change.
+
+    The result is shared between requests: do not modify it.
+    """
+    version = bank_version(db, owner)
+    with _cache_lock:
+        hit = _cache.get(owner.id)
+        if hit and hit[0] == version:
+            return hit[1]
+    result = analyse(db, owner)
+    with _cache_lock:
+        _cache[owner.id] = (version, result)
+    return result
+
+
+def analysis_counts(analysis: dict) -> dict:
+    return {key: len(items) for key, items in analysis.items()}
+
+
+def trimmed_analysis(analysis: dict, limit: int) -> dict:
+    """The analysis with every list cut to ``limit`` entries, plus the real counts."""
+    return {**{key: items[:limit] for key, items in analysis.items()},
+            "counts": analysis_counts(analysis), "limit": limit}
+
+
+def flag_map(analysis: dict) -> dict[int, list[dict]]:
+    """question id -> short hints to show next to the question."""
+    flags: dict[int, list[dict]] = defaultdict(list)
+    for e in analysis["exact"]:
+        flags[e["question"]["id"]].append({"label": f"in {e['count']} Dateien", "kind": "info"})
+    for g in analysis["conflicts"]:
+        for q in g["questions"]:
+            flags[q["id"]].append({"label": "Widerspruch", "kind": "danger"})
+    for p in analysis["similar"]:
+        for q in (p["a"], p["b"]):
+            flags[q["id"]].append({"label": "ähnliche Frage", "kind": "violet"})
+    for i in analysis["issues"]:
+        flags[i["question"]["id"]].append({"label": i["problems"][0], "kind": "warn"})
+    return flags
+
+
+def check_selection(analysis: dict, ids: set[int]) -> dict:
+    """Problems that arise from picking exactly these questions together."""
+    similar = [(p["a"]["name"], p["b"]["name"]) for p in analysis["similar"]
+               if p["a"]["id"] in ids and p["b"]["id"] in ids]
+    conflicts = [g["questions"][0]["name"] for g in analysis["conflicts"]
+                 if sum(1 for q in g["questions"] if q["id"] in ids) > 1]
+    broken = [i["question"]["name"] for i in analysis["issues"] if i["question"]["id"] in ids]
+    return {
+        "similar_pairs": len(similar), "similar_examples": [f"{a} ↔ {b}" for a, b in similar[:3]],
+        "conflict_groups": len(conflicts), "conflict_examples": conflicts[:3],
+        "broken": len(broken), "broken_examples": broken[:3],
+    }
 
 
 def analyse(db: Session, owner: User, *, questions: list[Question] | None = None) -> dict:

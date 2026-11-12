@@ -211,3 +211,25 @@ def test_bank_is_private_per_user(auth_client, make_user_client):
     assert other.get("/api/questions").json() == []
     assert other.get("/api/bank/overview").json()["totals"]["questions"] == 0
     assert other.delete(f"/api/bank/files/{results[0]['file_id']}").status_code == 404
+
+
+def test_category_prefix_puts_the_export_in_its_own_categories(auth_client):
+    from app.moodle_export import with_prefix
+    assert with_prefix("$module$/top/Praktikum/Kapitel 2", "Prüfung WS 25/26") == \
+        "$module$/top/Prüfung WS 25//26/Praktikum/Kapitel 2"
+    assert with_prefix("$course$/top/A", None) == "$course$/top/A" and with_prefix(None, "X") is None
+
+    _import(auth_client, DB24)
+    ids = [q["id"] for q in auth_client.get("/api/questions").json()]
+    plain = auth_client.post("/api/export", json={"question_ids": ids})
+    prefixed = auth_client.post("/api/export", json={"question_ids": ids, "category_prefix": "Prüfung 1"})
+    def paths(r):
+        root = etree.fromstring(r.content)
+        return sorted(q.findtext("category/text") for q in root.findall("question") if q.get("type") == "category")
+    assert paths(plain) == ["$course$/top/Datenbanken/ER-Modell", "$course$/top/Datenbanken/SQL"]
+    assert paths(prefixed) == ["$course$/top/Prüfung 1/Datenbanken/ER-Modell", "$course$/top/Prüfung 1/Datenbanken/SQL"]
+    # the questions themselves are untouched
+    def questions(r):
+        return sorted(etree.tostring(q, method="c14n") for q in etree.fromstring(r.content).findall("question")
+                      if q.get("type") != "category")
+    assert questions(plain) == questions(prefixed)

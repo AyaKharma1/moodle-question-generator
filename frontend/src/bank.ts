@@ -51,6 +51,19 @@ export function shortText(text: string, max = 280): string {
 
 export type DrawLevel = "impossible" | "small" | "tight" | "good";
 
+export const LEVEL_TEXT: Record<DrawLevel, string> = {
+  impossible: "zu wenige Fragen",
+  small: "zu klein",
+  tight: "knapp",
+  good: "gut",
+};
+export const LEVEL_BADGE: Record<DrawLevel, string> = {
+  impossible: "danger",
+  small: "danger",
+  tight: "warn",
+  good: "ok",
+};
+
 export interface DrawCheck {
   level: DrawLevel;
   // Expected number of identical questions two students get.
@@ -103,4 +116,93 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------- search helpers
+
+export function searchTerms(query: string | undefined): string[] {
+  return (query ?? "").split(/\s+/).map((t) => t.trim()).filter(Boolean).slice(0, 8);
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export interface Segment {
+  text: string;
+  hit: boolean;
+}
+
+// Split text into plain and matching parts, so templates can wrap the hits in
+// <mark> without v-html (the text is never interpreted as HTML).
+export function highlight(text: string, terms: string[]): Segment[] {
+  if (!text) return [];
+  if (terms.length === 0) return [{ text, hit: false }];
+  const re = new RegExp(terms.map(escapeRegExp).join("|"), "gi");
+  const out: Segment[] = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (m[0] === "") continue;
+    const at = m.index ?? 0;
+    if (at > last) out.push({ text: text.slice(last, at), hit: false });
+    out.push({ text: m[0], hit: true });
+    last = at + m[0].length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last), hit: false });
+  return out;
+}
+
+// The part of a long text around the first hit (or its start without a hit).
+export function excerpt(text: string, terms: string[], max = 280): string {
+  if (text.length <= max) return text;
+  const lower = text.toLowerCase();
+  const at = terms.map((t) => lower.indexOf(t.toLowerCase())).filter((i) => i >= 0).sort((a, b) => a - b)[0];
+  if (at === undefined || at < max - 60) return text.slice(0, max).trimEnd() + "…";
+  const start = Math.max(0, at - 80);
+  return "…" + text.slice(start, start + max).trim() + "…";
+}
+
+// Where in a question the search words were found (for "Treffer in …" chips).
+export function matchFields(
+  q: { name: string | null; question_text: string; explanation: string; answers: { text: string }[];
+       fach: string | null; category: string | null; origins: { filename: string }[] },
+  terms: string[],
+): string[] {
+  if (terms.length === 0) return [];
+  const has = (text: string) => terms.some((t) => text.toLowerCase().includes(t.toLowerCase()));
+  const found: string[] = [];
+  if (has(q.name ?? "")) found.push("Name");
+  if (has(plainText(q.question_text))) found.push("Fragetext");
+  if (q.answers.some((a) => has(plainText(a.text)))) found.push("Antwort");
+  if (has(plainText(q.explanation))) found.push("Erklärung");
+  if (has(`${q.fach ?? ""} ${q.category ?? ""}`)) found.push("Kategorie");
+  if (q.origins.some((o) => has(o.filename))) found.push("Dateiname");
+  return found;
+}
+
+export const FLAG_LABELS: Record<string, string> = {
+  any: "Mit irgendeinem Hinweis",
+  conflict: "Widerspruch",
+  similar: "Ähnliche Frage",
+  issue: "Fehlerhaft",
+  duplicate: "In mehreren Dateien",
+};
+
+export const SORT_LABELS: Record<string, string> = {
+  newest: "Neueste zuerst",
+  name: "Name A–Z",
+  category: "Fach und Kategorie",
+  files: "In den meisten Dateien",
+};
+
+export function formatNumber(n: number): string {
+  return n.toLocaleString("de-DE");
+}
+
+// 10^x as a readable number: 4.3 -> "ca. 20.000", 12.5 -> "mehr als 1 Billion"
+export function formatVariants(log10: number): string {
+  if (log10 < 6) return `ca. ${formatNumber(Math.round(10 ** log10))}`;
+  if (log10 < 9) return "mehr als 1 Million";
+  if (log10 < 12) return "mehr als 1 Milliarde";
+  return "mehr als 1 Billion";
 }

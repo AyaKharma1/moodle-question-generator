@@ -215,3 +215,79 @@ def test_search_is_private_per_user(auth_client, make_user_client):
     page = other.get("/api/bank/questions", params={"q": "select"}).json()
     assert page["total"] == 0 and page["facets"]["fach"] == []
     assert other.get("/api/bank/selectable-ids").json()["total"] == 0
+
+
+def test_export_history_carries_question_names_for_searching(auth_client):
+    _import(auth_client, DB24)
+    ids = [q["id"] for q in _search(auth_client, q="sql")["items"]]
+    auth_client.post("/api/export", json={"question_ids": ids, "filename": "klausur"})
+    history = auth_client.get("/api/export/history").json()
+    assert sorted(history[0]["question_names"]) == ["Aggregatfunktion", "Fremdschlüssel", "SELECT"]
+    auth_client.delete(f"/api/questions/{ids[0]}")
+    assert "gelöschte Frage" in auth_client.get("/api/export/history").json()[0]["question_names"]
+
+
+# ---------------- cached analysis, hints and selection check ----------------
+
+def test_questions_carry_their_hints(auth_client):
+    _import(auth_client, WS24, SS25, DB24)
+    items = {q["name"]: q for q in _search(auth_client, page_size=200)["items"]}
+    assert [f["label"] for f in items["CPU Takt"]["flags"]] == ["Widerspruch"]
+    assert {f["label"] for f in items["RAM Definition"]["flags"]} == {"in 2 Dateien"}
+    assert [f["kind"] for f in items["Deadlock"]["flags"]] == ["violet"]
+    assert items["Netzwerkkarte"]["flags"][0]["label"].startswith("Bild fehlt")
+    assert items["SELECT"]["flags"] == []
+
+
+def test_the_analysis_follows_every_change_of_the_bank(auth_client):
+    _import(auth_client, WS24)
+    assert auth_client.get("/api/bank/analysis").json()["counts"]["conflicts"] == 0
+    warm = auth_client.get("/api/bank/analysis").json()                      # served from the cache
+    assert warm["counts"]["conflicts"] == 0
+
+    results = auth_client.post("/api/bank/import", files=[("files", (SS25, io.BytesIO((SAMPLES / SS25).read_bytes()), "text/xml"))]).json()
+    after_import = auth_client.get("/api/bank/analysis").json()["counts"]
+    assert after_import["conflicts"] == 1 and after_import["similar"] == 1   # import is noticed
+
+    auth_client.delete(f"/api/bank/files/{results[0]['file_id']}")
+    after_remove = auth_client.get("/api/bank/analysis").json()["counts"]
+    assert after_remove == {"exact": 0, "conflicts": 0, "similar": 0, "issues": 0}   # removal is noticed
+
+    doc = auth_client.post("/api/documents", files={"file": ("l.txt", io.BytesIO(
+        "Ein Primärschlüssel identifiziert jeden Datensatz.".encode()), "text/plain")}).json()
+    gen = auth_client.post("/api/generate", json={"document_id": doc["id"], "num_questions": 1}).json()
+    assert auth_client.get("/api/bank/overview").json()["totals"]["questions"] == 7   # new question is noticed
+    assert gen["created"]
+
+
+def test_analysis_lists_are_trimmed_but_counts_stay_true(auth_client):
+    _import(auth_client, WS24, SS25, DB24)
+    trimmed = auth_client.get("/api/bank/analysis", params={"limit": 1}).json()
+    assert trimmed["limit"] == 1
+    assert trimmed["counts"] == {"exact": 2, "conflicts": 1, "similar": 1, "issues": 3}
+    assert all(len(trimmed[k]) <= 1 for k in ("exact", "conflicts", "similar", "issues"))
+    assert len(auth_client.get("/api/bank/analysis").json()["issues"]) == 3     # default limit is generous
+
+
+def test_check_selection_names_the_problems(auth_client):
+    _import(auth_client, WS24, SS25, DB24)
+    by_name = {}
+    for q in _search(auth_client, page_size=200)["items"]:
+        by_name.setdefault(q["name"], []).append(q["id"])
+    both_deadlock = by_name["Deadlock"] + by_name["Deadlock Bedingung"]
+    both_cpu = by_name["CPU Takt"]
+    res = auth_client.post("/api/bank/check-selection", json={"ids": both_deadlock + both_cpu + by_name["Netzwerkkarte"]}).json()
+    assert res["similar_pairs"] == 1 and res["similar_examples"] == ["Deadlock ↔ Deadlock Bedingung"]
+    assert res["conflict_groups"] == 1 and res["conflict_examples"] == ["CPU Takt"]
+    assert res["broken"] == 1 and res["broken_examples"] == ["Netzwerkkarte"]
+    one_of_each = auth_client.post("/api/bank/check-selection", json={"ids": by_name["Deadlock"] + by_name["CPU Takt"][:1]}).json()
+    assert one_of_each["similar_pairs"] == 0 and one_of_each["conflict_groups"] == 0
+    assert auth_client.post("/api/bank/check-selection", json={"ids": []}).json()["similar_pairs"] == 0
+    assert auth_client.post("/api/bank/check-selection", json={"ids": list(range(6000))}).status_code == 422
+
+
+def test_cache_is_kept_per_user(auth_client, make_user_client):
+    _import(auth_client, WS24, SS25)
+    assert auth_client.get("/api/bank/analysis").json()["counts"]["conflicts"] == 1
+    other = make_user_client("other@example.com")
+    assert other.get("/api/bank/analysis").json()["counts"] == {"exact": 0, "conflicts": 0, "similar": 0, "issues": 0}
