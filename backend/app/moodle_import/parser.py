@@ -142,6 +142,21 @@ def _missing_files(question) -> list[str]:
     return sorted(unquote(r) for r in referenced if unquote(r) not in embedded)
 
 
+def search_text_from_xml(raw_xml: str) -> str:
+    """All human-readable text of one ``<question>`` element, as plain text.
+
+    Covers the name, question text, answers, sub-questions of matching
+    questions and all feedback, i.e. everything an instructor might remember
+    about a question.
+    """
+    try:
+        el = etree.fromstring(raw_xml.encode("utf-8"), parser=safe_parser())
+    except etree.XMLSyntaxError:
+        return ""
+    parts = [plain_text(t.text or "") for t in el.iter("text")]
+    return " ".join(p for p in parts if p)
+
+
 def missing_files_in_xml(raw_xml: str) -> list[str]:
     try:
         return _missing_files(etree.fromstring(raw_xml.encode("utf-8"), parser=safe_parser()))

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import ExportHistory, Question, QuestionStatus, User
-from app.moodle_export import ExportItem, ExportValidationError, category_path_for, export_bank
+from app.moodle_export import ExportItem, ExportValidationError, category_path_for, export_bank, with_prefix
 from app.question_management.service import row_to_domain
 from app.schemas.api import ExportRequest
 from app.security.deps import get_current_user
@@ -28,16 +28,16 @@ def _safe_filename(name: str | None) -> str:
     return base[:100]
 
 
-def _export_item(q: Question) -> ExportItem:
+def _export_item(q: Question, prefix: str | None = None) -> ExportItem:
     # Imported questions go back exactly as Moodle exported them; their
     # original category path is kept so Moodle restores the same structure.
     if q.raw_xml:
         return ExportItem(
-            category_path=q.category_path or category_path_for(q.fach, q.category),
+            category_path=with_prefix(q.category_path or category_path_for(q.fach, q.category), prefix),
             raw_xml=q.raw_xml,
         )
     return ExportItem(
-        category_path=category_path_for(q.fach, q.category),
+        category_path=with_prefix(category_path_for(q.fach, q.category), prefix),
         question=row_to_domain(q),
         name=q.name,
     )
@@ -76,7 +76,7 @@ def export_xml(
     ordered = [by_id[qid] for qid in dict.fromkeys(payload.question_ids)]
 
     try:
-        xml = export_bank([_export_item(r) for r in ordered])
+        xml = export_bank([_export_item(r, payload.category_prefix) for r in ordered])
     except ExportValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
@@ -101,15 +101,21 @@ def export_xml(
 def export_history(
     db: Session = Depends(get_db), current: User = Depends(get_current_user)
 ) -> list[dict]:
-    rows = db.scalars(
+    rows = list(db.scalars(
         select(ExportHistory).where(ExportHistory.owner_id == current.id).order_by(ExportHistory.id.desc())
-    )
+    ))
+    wanted = {qid for r in rows for qid in r.question_ids or []}
+    names = dict(db.execute(
+        select(Question.id, Question.name).where(Question.owner_id == current.id, Question.id.in_(wanted or {-1}))
+    ).all())
     return [
         {
             "id": r.id,
             "filename": r.filename,
             "question_count": r.question_count,
             "question_ids": r.question_ids,
+            # names let the history be searched by question without loading the bank
+            "question_names": [names.get(qid) or "gelöschte Frage" for qid in r.question_ids or []],
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r in rows

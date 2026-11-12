@@ -14,10 +14,11 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
@@ -29,6 +30,7 @@ from app.models import (
     QuestionStatus,
     User,
 )
+from app.question_bank.search import build_search_text
 from app.moodle_import import (
     NO_CATEGORY,
     ParsedQuestion,
@@ -41,7 +43,7 @@ from app.moodle_import import (
 
 # Two questions whose word sets overlap this much count as "similar".
 SIMILARITY_THRESHOLD = 0.8
-MAX_SIMILAR_PAIRS = 200
+MAX_SIMILAR_PAIRS = 5000
 
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
 # Types where "has a correct answer" is a meaningful check.
@@ -96,6 +98,7 @@ def _new_question(owner: User, parsed: ParsedQuestion, fach: str | None,
         row.answers.append(Answer(
             text=a.text, is_correct=a.is_correct, feedback=a.feedback, position=pos,
         ))
+    row.search_text = build_search_text(row)
     return row
 
 
@@ -225,7 +228,7 @@ def overview(db: Session, owner: User) -> dict:
     for q in questions:
         tree[q.fach or "Ohne Fach"][q.category or NO_CATEGORY] += 1
 
-    analysis = analyse(db, owner, questions=questions)
+    analysis = analysis_cached(db, owner)
     return {
         "totals": {
             "questions": len(questions),
@@ -235,6 +238,8 @@ def overview(db: Session, owner: User) -> dict:
             "duplicates": len(analysis["exact"]),
             "conflicts": len(analysis["conflicts"]),
             "similar": len(analysis["similar"]),
+            # the search stops at MAX_SIMILAR_PAIRS; the UI then shows "5.000+"
+            "similar_capped": len(analysis["similar"]) >= MAX_SIMILAR_PAIRS,
             "issues": len(analysis["issues"]),
         },
         "tree": [
@@ -261,7 +266,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
-def _similar_pairs(questions: list[Question]) -> list[tuple[int, int, float]]:
+def similar_pairs(questions: list[Question], limit: int = MAX_SIMILAR_PAIRS) -> list[tuple[int, int, float]]:
     """Pairs with Jaccard similarity >= SIMILARITY_THRESHOLD.
 
     Uses prefix filtering instead of comparing every pair: with tokens sorted
@@ -291,7 +296,7 @@ def _similar_pairs(questions: list[Question]) -> list[tuple[int, int, float]]:
             score = _jaccard(token_sets[i], token_sets[j])
             if score >= t:
                 pairs.append((i, j, score))
-                if len(pairs) >= MAX_SIMILAR_PAIRS:
+                if len(pairs) >= limit:
                     return pairs
         for tok in prefix:
             index[tok].append(j)
@@ -321,6 +326,100 @@ def _issues(q: Question) -> list[str]:
     return problems
 
 
+# ------------------------------------------------------------ cached analysis
+#
+# The analysis looks at the whole bank, so it costs about a second with
+# thousands of questions. It is needed by the overview, the problem filter,
+# the hints on every question and the test planner, so it is computed once per
+# state of the bank. The state is a cheap fingerprint of the bank's rows: any
+# import, removal or edit changes it and the next request recomputes.
+
+_cache: dict[int, tuple[tuple, dict]] = {}
+_cache_lock = threading.Lock()
+
+
+def clear_analysis_cache() -> None:
+    with _cache_lock:
+        _cache.clear()
+
+
+def bank_version(db: Session, owner: User) -> tuple:
+    questions = db.execute(
+        select(func.count(Question.id), func.coalesce(func.max(Question.id), 0),
+               func.coalesce(func.sum(Question.id), 0), func.max(Question.updated_at))
+        .where(Question.owner_id == owner.id)
+    ).one()
+    occurrences = db.execute(
+        select(func.count(QuestionOccurrence.id), func.coalesce(func.max(QuestionOccurrence.id), 0))
+        .join(Question, Question.id == QuestionOccurrence.question_id)
+        .where(Question.owner_id == owner.id)
+    ).one()
+    files = db.execute(
+        select(func.count(ImportFile.id), func.coalesce(func.max(ImportFile.id), 0))
+        .where(ImportFile.owner_id == owner.id)
+    ).one()
+    return (*questions, *occurrences, *files)
+
+
+def analysis_cached(db: Session, owner: User) -> dict:
+    """``analyse`` for the current state of the bank, recomputed only after a change.
+
+    The result is shared between requests: do not modify it.
+    """
+    version = bank_version(db, owner)
+    with _cache_lock:
+        hit = _cache.get(owner.id)
+        if hit and hit[0] == version:
+            return hit[1]
+    result = analyse(db, owner)
+    with _cache_lock:
+        _cache[owner.id] = (version, result)
+    return result
+
+
+def analysis_counts(analysis: dict) -> dict:
+    return {key: len(items) for key, items in analysis.items()}
+
+
+def trimmed_analysis(analysis: dict, limit: int) -> dict:
+    """The analysis with every list cut to ``limit`` entries, plus the real counts."""
+    counts = analysis_counts(analysis)
+    return {**{key: items[:limit] for key, items in analysis.items()},
+            "counts": counts, "limit": limit,
+            # the similar-question search stops at MAX_SIMILAR_PAIRS, so that count is a lower bound
+            "similar_capped": counts["similar"] >= MAX_SIMILAR_PAIRS}
+
+
+def flag_map(analysis: dict) -> dict[int, list[dict]]:
+    """question id -> short hints to show next to the question."""
+    flags: dict[int, list[dict]] = defaultdict(list)
+    for e in analysis["exact"]:
+        flags[e["question"]["id"]].append({"label": f"in {e['count']} Dateien", "kind": "info"})
+    for g in analysis["conflicts"]:
+        for q in g["questions"]:
+            flags[q["id"]].append({"label": "Widerspruch", "kind": "danger"})
+    for p in analysis["similar"]:
+        for q in (p["a"], p["b"]):
+            flags[q["id"]].append({"label": "ähnliche Frage", "kind": "violet"})
+    for i in analysis["issues"]:
+        flags[i["question"]["id"]].append({"label": i["problems"][0], "kind": "warn"})
+    return flags
+
+
+def check_selection(analysis: dict, ids: set[int]) -> dict:
+    """Problems that arise from picking exactly these questions together."""
+    similar = [(p["a"]["name"], p["b"]["name"]) for p in analysis["similar"]
+               if p["a"]["id"] in ids and p["b"]["id"] in ids]
+    conflicts = [g["questions"][0]["name"] for g in analysis["conflicts"]
+                 if sum(1 for q in g["questions"] if q["id"] in ids) > 1]
+    broken = [i["question"]["name"] for i in analysis["issues"] if i["question"]["id"] in ids]
+    return {
+        "similar_pairs": len(similar), "similar_examples": [f"{a} ↔ {b}" for a, b in similar[:3]],
+        "conflict_groups": len(conflicts), "conflict_examples": conflicts[:3],
+        "broken": len(broken), "broken_examples": broken[:3],
+    }
+
+
 def analyse(db: Session, owner: User, *, questions: list[Question] | None = None) -> dict:
     questions = questions if questions is not None else _bank_questions(db, owner)
 
@@ -343,7 +442,7 @@ def analyse(db: Session, owner: User, *, questions: list[Question] | None = None
     # 3. Different wording, (almost) the same content.
     similar = [
         {"a": brief(questions[i]), "b": brief(questions[j]), "score": round(score, 2)}
-        for i, j, score in _similar_pairs(questions)
+        for i, j, score in similar_pairs(questions)
     ]
 
     # 4. Broken questions.

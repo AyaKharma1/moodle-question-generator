@@ -43,6 +43,16 @@ export interface Question {
   moodle_type: string | null;
   origins: Origin[];
   exported_in: string[];
+  flags: { label: string; kind: string }[];
+}
+
+export interface SelectionCheck {
+  similar_pairs: number;
+  similar_examples: string[];
+  conflict_groups: number;
+  conflict_examples: string[];
+  broken: number;
+  broken_examples: string[];
 }
 
 export interface QuestionFilter {
@@ -74,6 +84,93 @@ export interface ImportFile {
   question_count: number;
   new_count: number;
   created_at: string;
+  categories: string[];
+}
+
+export interface FacetValue {
+  value: string;
+  count: number;
+}
+
+export interface Facets {
+  fach: FacetValue[];
+  category: FacetValue[];
+  type: FacetValue[];
+  file: (FacetValue & { id: number })[];
+}
+
+export interface BankPage {
+  items: Question[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  facets: Facets;
+}
+
+export interface BankQuery {
+  q?: string;
+  fach?: string;
+  category?: string;
+  file?: number | string;
+  type?: string;
+  source?: string;
+  flag?: string;
+  exported?: string;
+  sort?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface PlanSlot {
+  fach: string | null;
+  category: string;
+  count: number;
+}
+
+export interface PlanRequest {
+  slots: PlanSlot[];
+  students: number;
+  seed?: number;
+  only_unused?: boolean;
+}
+
+export interface PaperStats {
+  avg_overlap: number;
+  max_overlap: number;
+  unique_papers: number;
+  students_with_identical_paper: number;
+  usage_min: number;
+  usage_max: number;
+}
+
+export interface PlanSlotResult {
+  fach: string | null;
+  category: string;
+  label: string;
+  count: number;
+  pool_before: number;
+  pool_size: number;
+  enough: boolean;
+  level: "impossible" | "small" | "tight" | "good";
+  shared_expected: number | null;
+  recommended_min: number;
+  removed: { id: number; name: string; reason: string }[];
+  pool: { id: number; name: string }[];
+}
+
+export interface PlanResult {
+  seed: number;
+  students: number;
+  per_paper: number;
+  ok: boolean;
+  slots: PlanSlotResult[];
+  pool_ids: number[];
+  warnings: string[];
+  variants_log10: number | null;
+  random: PaperStats | null;
+  balanced: PaperStats | null;
+  sample_papers: { student: number; questions: { id: number; name: string; category: string }[] }[];
 }
 
 export interface BankOverview {
@@ -85,6 +182,7 @@ export interface BankOverview {
     duplicates: number;
     conflicts: number;
     similar: number;
+    similar_capped: boolean;
     issues: number;
   };
   tree: { fach: string; count: number; categories: { name: string; count: number }[] }[];
@@ -102,6 +200,9 @@ export interface BriefQuestion {
 }
 
 export interface BankAnalysis {
+  counts: { exact: number; conflicts: number; similar: number; issues: number };
+  limit: number;
+  similar_capped: boolean;
   exact: { question: BriefQuestion; count: number }[];
   conflicts: { questions: BriefQuestion[] }[];
   similar: { a: BriefQuestion; b: BriefQuestion; score: number }[];
@@ -113,6 +214,7 @@ export interface ExportRecord {
   filename: string;
   question_count: number;
   question_ids: number[];
+  question_names: string[];
   created_at: string | null;
 }
 
@@ -163,6 +265,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(res.status, msg);
   }
   return body as T;
+}
+
+function toQuery(params: object): string {
+  const sp = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") sp.set(key, String(value));
+  }
+  const qs = sp.toString();
+  return qs ? `?${qs}` : "";
 }
 
 export const api = {
@@ -227,6 +338,41 @@ export const api = {
   analysis: () => request<BankAnalysis>("/api/bank/analysis"),
   exportHistory: () => request<ExportRecord[]>("/api/export/history"),
 
+  // search (server side, paged)
+  bankQuestions: (query: BankQuery) => request<BankPage>(`/api/bank/questions${toQuery(query)}`),
+  bankSelectableIds: (query: BankQuery, excludeFlagged = false) =>
+    request<{ ids: number[]; total: number; truncated: boolean }>(
+      `/api/bank/selectable-ids${toQuery({ ...query, page: undefined, page_size: undefined, exclude_flagged: excludeFlagged || undefined })}`,
+    ),
+
+  checkSelection: (ids: number[]) =>
+    request<SelectionCheck>("/api/bank/check-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }),
+
+  // test planner
+  plan: (body: PlanRequest) =>
+    request<PlanResult>("/api/planner/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  async planCsv(body: PlanRequest): Promise<Blob> {
+    const token = getToken();
+    const res = await fetch("/api/planner/plan.csv", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, (err as any).detail ?? res.statusText);
+    }
+    return res.blob();
+  },
+
   // questions
   listQuestions: (filter: QuestionFilter | string = {}) => {
     const f = typeof filter === "string" ? { status: filter } : filter;
@@ -254,7 +400,7 @@ export const api = {
     request<Question>(`/api/questions/${id}/regenerate`, { method: "POST" }),
 
   // export (returns the raw XML as a Blob to download)
-  async exportXml(question_ids: number[], filename?: string): Promise<Blob> {
+  async exportXml(question_ids: number[], filename?: string, category_prefix?: string): Promise<Blob> {
     const token = getToken();
     const res = await fetch("/api/export", {
       method: "POST",
@@ -262,7 +408,7 @@ export const api = {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ question_ids, filename }),
+      body: JSON.stringify({ question_ids, filename, category_prefix: category_prefix || undefined }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));

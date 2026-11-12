@@ -3,29 +3,47 @@ from __future__ import annotations
 import logging
 import os
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+import math
+from collections import defaultdict
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings, get_settings
 from app.database import get_db
-from app.models import ImportFile, User
+from app.models import ImportFile, Question, QuestionOccurrence, QuestionStatus, User
 from app.moodle_import import MoodleImportError
+from app.question_bank.search import (
+    FLAGS,
+    SORTS,
+    BankFilter,
+    all_flagged_ids,
+    apply_filters,
+    facets,
+    flagged_question_ids,
+    order_by,
+)
 from app.question_bank.service import (
     DuplicateFileError,
-    analyse,
+    analysis_cached,
+    check_selection,
     delete_import_file,
+    flag_map,
+    trimmed_analysis,
+    export_map,
     import_moodle_file,
     overview,
 )
-from app.schemas.api import ImportFileOut, ImportSummaryOut
+from app.schemas.api import BankPage, ImportFileOut, ImportSummaryOut, QuestionOut, SelectionCheckIn
 from app.security.deps import get_current_user
 
 logger = logging.getLogger("app.bank")
 router = APIRouter(prefix="/api/bank", tags=["question bank"])
 
 MAX_FILES_PER_IMPORT = 20
+MAX_SELECTABLE = 5000
 
 
 def _owned_file(db: Session, file_id: int, user: User) -> ImportFile:
@@ -74,10 +92,22 @@ async def import_files(
 @router.get("/files", response_model=list[ImportFileOut])
 def list_files(
     db: Session = Depends(get_db), current: User = Depends(get_current_user)
-) -> list[ImportFile]:
-    return list(db.scalars(
+) -> list[ImportFileOut]:
+    files = list(db.scalars(
         select(ImportFile).where(ImportFile.owner_id == current.id).order_by(ImportFile.id.desc())
     ))
+    cats: dict[int, list[str]] = defaultdict(list)
+    for file_id, category in db.execute(
+        select(QuestionOccurrence.import_file_id, QuestionOccurrence.category)
+        .where(QuestionOccurrence.import_file_id.in_([f.id for f in files] or [-1]))
+        .distinct()
+    ):
+        if category:
+            cats[file_id].append(category)
+    return [
+        ImportFileOut.model_validate(f).model_copy(update={"categories": sorted(cats[f.id])})
+        for f in files
+    ]
 
 
 @router.delete("/files/{file_id}", status_code=204, response_class=Response)
@@ -99,6 +129,103 @@ def bank_overview(
 
 @router.get("/analysis")
 def bank_analysis(
-    db: Session = Depends(get_db), current: User = Depends(get_current_user)
+    limit: int = Query(default=300, ge=1, le=5000),
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
 ) -> dict:
-    return analyse(db, current)
+    """Findings per kind, each list cut to ``limit`` entries; ``counts`` has the real totals."""
+    return trimmed_analysis(analysis_cached(db, current), limit)
+
+
+@router.post("/check-selection")
+def bank_check_selection(
+    payload: SelectionCheckIn,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+) -> dict:
+    """Do the picked questions contradict or nearly repeat each other?"""
+    return check_selection(analysis_cached(db, current), set(payload.ids))
+
+
+# ---------------------------------------------------------------- search
+
+def bank_filter(
+    q: str | None = Query(default=None, max_length=200),
+    fach: str | None = None,
+    category: str | None = None,
+    file: int | None = None,
+    source: str | None = Query(default=None, pattern="^(import|ai)$"),
+    type: str | None = Query(default=None, max_length=32),
+    flag: str | None = None,
+    exported: str | None = Query(default=None, pattern="^(yes|no)$"),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> BankFilter:
+    if flag is not None and flag not in FLAGS:
+        raise HTTPException(status_code=422, detail=f"flag muss einer von {', '.join(FLAGS)} sein")
+    f = BankFilter(q=q, fach=fach, category=category, import_file_id=file, source=source,
+                   qtype=type, flag=flag, exported=exported)
+    if flag:
+        f.flagged_ids = flagged_question_ids(analysis_cached(db, current), flag)
+    if exported:
+        f.exported_ids = set(export_map(db, current))
+    return f
+
+
+@router.get("/questions", response_model=BankPage)
+def search_questions(
+    f: BankFilter = Depends(bank_filter),
+    sort: str = "newest",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> BankPage:
+    """Search, filter, sort and page through the whole bank."""
+    if sort not in SORTS:
+        raise HTTPException(status_code=422, detail=f"sort muss einer von {', '.join(SORTS)} sein")
+
+    base = apply_filters(select(Question), db, current, f)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    pages = max(1, math.ceil(total / page_size))
+    page = min(page, pages)
+    rows = db.scalars(
+        order_by(base, sort).options(selectinload(Question.answers))
+        .limit(page_size).offset((page - 1) * page_size)
+    ).all()
+
+    exports = export_map(db, current)
+    flags = flag_map(analysis_cached(db, current)) if rows else {}
+    return BankPage(
+        items=[QuestionOut.model_validate(r).model_copy(
+                   update={"exported_in": exports.get(r.id, []), "flags": flags.get(r.id, [])})
+               for r in rows],
+        total=total, page=page, page_size=page_size, pages=pages,
+        facets=facets(db, current, f),
+    )
+
+
+@router.get("/selectable-ids")
+def selectable_ids(
+    f: BankFilter = Depends(bank_filter),
+    sort: str = "newest",
+    exclude_flagged: bool = False,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> dict:
+    """Ids of every exportable (approved) question matching the filters.
+
+    Lets the UI select "all N results" across pages, or draw a random sample.
+    ``exclude_flagged`` leaves out contradicting, near-duplicate and broken
+    questions, which should not go into a test unchecked.
+    """
+    if sort not in SORTS:
+        raise HTTPException(status_code=422, detail=f"sort muss einer von {', '.join(SORTS)} sein")
+    stmt = apply_filters(select(Question.id), db, current, f).where(
+        Question.status == QuestionStatus.approved.value
+    )
+    ids = list(db.scalars(order_by(stmt, sort).limit(MAX_SELECTABLE + 1)))
+    truncated = len(ids) > MAX_SELECTABLE
+    ids = ids[:MAX_SELECTABLE]
+    if exclude_flagged:
+        flagged = all_flagged_ids(analysis_cached(db, current))
+        ids = [i for i in ids if i not in flagged]
+    return {"ids": ids, "total": len(ids), "truncated": truncated}

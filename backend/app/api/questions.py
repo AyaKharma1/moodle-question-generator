@@ -21,6 +21,7 @@ from app.models import (
     QuestionStatus,
     User,
 )
+from app.question_bank.search import build_search_text
 from app.question_bank.service import export_map
 from app.question_management.service import persist_generated, row_to_domain
 from app.schemas.api import QuestionOut, QuestionUpdate, ReviewAction
@@ -149,6 +150,7 @@ def update_question(
             q.answers.append(
                 Answer(text=a.text, is_correct=a.is_correct, feedback=a.feedback, position=pos)
             )
+    q.search_text = build_search_text(q)
     # An edited question returns to pending review.
     q.status = QuestionStatus.pending.value
     db.commit()

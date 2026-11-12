@@ -9,6 +9,7 @@ const routes = [
   { path: "/import", name: "import", component: () => import("./views/ImportView.vue") },
   { path: "/bank", name: "bank", component: () => import("./views/BankView.vue") },
   { path: "/pruefung", name: "analysis", component: () => import("./views/AnalysisView.vue") },
+  { path: "/planer", name: "planner", component: () => import("./views/PlannerView.vue") },
   { path: "/verlauf", name: "history", component: () => import("./views/HistoryView.vue") },
   // Optional AI generator: lecture material -> new questions.
   { path: "/ki", redirect: { name: "upload" } },

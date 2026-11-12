@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { api, ApiError, type ImportFile, type ImportSummary } from "../api";
 import { formatDate, plural } from "../bank";
 
@@ -57,6 +57,15 @@ async function removeFile(f: ImportFile) {
   results.value = results.value.filter((r) => r.file_id !== f.id);
   await refresh();
 }
+
+const fileFilter = ref("");
+const visibleFiles = computed(() => {
+  const words = fileFilter.value.toLowerCase().split(/\s+/).filter(Boolean);
+  return files.value.filter((f) => {
+    const hay = `${f.filename} ${f.fach ?? ""} ${f.categories.join(" ")}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+});
 
 function kb(n: number) {
   return `${(n / 1024).toFixed(1)} KB`;
@@ -131,14 +140,26 @@ function kb(n: number) {
   </div>
 
   <div class="card">
-    <h2>Importierte Dateien</h2>
+    <div class="card-head">
+      <h2>Importierte Dateien <span class="badge neutral">{{ files.length }}</span></h2>
+      <input v-if="files.length > 3" v-model="fileFilter" type="search" placeholder="Datei, Fach oder Kategorie suchen…"
+             aria-label="Dateien durchsuchen" style="max-width: 320px" />
+    </div>
     <p v-if="files.length === 0" class="muted">Noch keine Dateien importiert.</p>
+    <p v-else-if="visibleFiles.length === 0" class="muted">Keine Datei passt zu „{{ fileFilter }}“.</p>
     <table v-else class="list">
-      <thead><tr><th>Datei</th><th>Fach</th><th>Fragen</th><th>Importiert am</th><th /></tr></thead>
+      <thead><tr><th>Datei</th><th>Fach und Kategorien</th><th>Fragen</th><th>Importiert am</th><th /></tr></thead>
       <tbody>
-        <tr v-for="f in files" :key="f.id">
+        <tr v-for="f in visibleFiles" :key="f.id">
           <td><router-link :to="{ name: 'bank', query: { file: f.id } }">{{ f.filename }}</router-link></td>
-          <td>{{ f.fach || "aus Kategorie" }}</td>
+          <td>
+            <div class="chips">
+              <span v-if="f.fach" class="chip">📚 <strong>{{ f.fach }}</strong></span>
+              <router-link v-for="c in f.categories.slice(0, 6)" :key="c" class="chip"
+                           :to="{ name: 'bank', query: { file: f.id, category: c } }">{{ c }}</router-link>
+              <span v-if="f.categories.length > 6" class="chip">+{{ f.categories.length - 6 }}</span>
+            </div>
+          </td>
           <td>{{ f.question_count }} <span class="muted">({{ f.new_count }} neu)</span></td>
           <td class="muted">{{ formatDate(f.created_at) }}</td>
           <td style="text-align: right"><button class="ghost small" @click="removeFile(f)">Entfernen</button></td>

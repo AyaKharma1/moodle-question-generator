@@ -25,6 +25,8 @@ from app.main import app  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def fresh_db():
+    from app.question_bank.service import clear_analysis_cache
+    clear_analysis_cache()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     yield
