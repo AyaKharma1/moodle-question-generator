@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkRandomDraw, plainText, selection, setSelected, toggleSelected, typeLabel } from "../bank";
+import { checkRandomDraw, plainText, selection, setSelected, shortText, toggleSelected, typeLabel } from "../bank";
 
 describe("checkRandomDraw", () => {
   it("flags categories that cannot fill a test", () => {
@@ -17,6 +17,7 @@ describe("plainText", () => {
   it("drops markup and decodes entities without executing anything", () => {
     expect(plainText("<p>Was ist <strong>RAM</strong>?</p>")).toBe("Was ist RAM?");
     expect(plainText("a &amp; b<script>alert(1)</script>")).toBe("a & balert(1)");
+    expect(plainText("<p>Warnungen</p><p>Wenn Sie</p><ul><li>eins</li><li>zwei</li></ul>")).toBe("Warnungen Wenn Sie eins zwei");
   });
 });
 
@@ -33,6 +34,14 @@ describe("selection", () => {
 describe("typeLabel", () => {
   it("translates known Moodle types and keeps unknown ones", () => {
     expect(typeLabel("essay")).toBe("Freitext");
+    expect(typeLabel("cloze")).toBe("Lückentext (Cloze)");
     expect(typeLabel("calculated")).toBe("calculated");
+  });
+});
+
+describe("shortText", () => {
+  it("shortens only long texts", () => {
+    expect(shortText("kurz")).toBe("kurz");
+    expect(shortText("a".repeat(400)).length).toBe(281);
   });
 });

@@ -8,7 +8,8 @@ const TYPE_LABELS: Record<string, string> = {
   essay: "Freitext",
   matching: "Zuordnung",
   numerical: "Numerisch",
-  multianswer: "Lückentext",
+  cloze: "Lückentext (Cloze)",
+  multianswer: "Lückentext (Cloze)",
   ddwtos: "Drag & Drop",
   gapselect: "Lückenauswahl",
   description: "Beschreibung",
@@ -22,7 +23,9 @@ export function typeLabel(type: string): string {
 // parser does not run scripts, and textContent drops all markup.
 export function plainText(html: string): string {
   if (!html) return "";
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  // textContent glues paragraphs together; put a space before block tags.
+  const spaced = html.replace(/<(\/?)(p|div|li|ul|ol|tr|td|th|h[1-6]|pre|br|table)\b/gi, " <$1$2");
+  const doc = new DOMParser().parseFromString(spaced, "text/html");
   return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
@@ -38,6 +41,12 @@ export function answerText(text: string, type: string): string {
 
 export function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+// Long question texts (e.g. Moodle "description" items with a whole lecture
+// section) are shortened in lists; the full text is one click away.
+export function shortText(text: string, max = 280): string {
+  return text.length <= max ? text : text.slice(0, max).trimEnd() + "…";
 }
 
 export type DrawLevel = "impossible" | "small" | "tight" | "good";

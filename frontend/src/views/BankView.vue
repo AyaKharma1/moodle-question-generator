@@ -9,7 +9,7 @@ import {
   type ImportFile,
   type Question,
 } from "../api";
-import { answerText, downloadBlob, plainText, selection, setSelected, toggleSelected, typeLabel } from "../bank";
+import { answerText, downloadBlob, plainText, selection, setSelected, shortText, toggleSelected, typeLabel } from "../bank";
 
 const route = useRoute();
 const router = useRouter();
@@ -209,15 +209,16 @@ async function exportSelected() {
         <span v-if="q.status !== 'approved'" class="badge" :class="q.status">{{ q.status === "pending" ? "noch nicht freigegeben" : "abgelehnt" }}</span>
         <span v-for="f in flags.get(q.id) ?? []" :key="f.label" class="badge" :class="f.cls">{{ f.label }}</span>
       </div>
-      <div class="q-text">{{ plainText(q.question_text) }}</div>
+      <div class="q-text">{{ expanded.has(q.id) ? plainText(q.question_text) : shortText(plainText(q.question_text)) }}</div>
       <div class="chips">
         <span class="chip" v-if="q.fach">📚 <strong>{{ q.fach }}</strong> / {{ q.category }}</span>
         <span v-for="o in q.origins" :key="o.file_id + (o.category ?? '')" class="chip" :title="o.category ?? ''">📄 {{ o.filename }}</span>
         <span v-if="!q.origins.length && q.ai_generated" class="chip">🤖 aus Vorlesungsmaterial generiert</span>
         <span v-for="e in q.exported_in" :key="e" class="chip export">⬆ exportiert in {{ e }}</span>
       </div>
-      <button v-if="q.answers.length" class="ghost small" style="margin-top: 0.35rem; padding-left: 0" @click="toggleExpanded(q.id)">
-        {{ expanded.has(q.id) ? "Antworten ausblenden" : `${q.answers.length} Antwort(en) anzeigen` }}
+      <button v-if="q.answers.length || plainText(q.question_text).length > 280" class="ghost small"
+              style="margin-top: 0.35rem; padding-left: 0" @click="toggleExpanded(q.id)">
+        {{ expanded.has(q.id) ? "Weniger anzeigen" : q.answers.length ? `Ganzen Text und ${q.answers.length} Antwort(en) anzeigen` : "Ganzen Text anzeigen" }}
       </button>
       <ul v-if="expanded.has(q.id)" class="answers-list">
         <li v-for="a in q.answers" :key="a.id" :class="{ correct: a.is_correct }">{{ answerText(a.text, q.question_type) }}</li>
