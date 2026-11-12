@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import ExportHistory, Question, QuestionStatus, User
-from app.moodle_export import ExportValidationError, export_questions
+from app.moodle_export import ExportItem, ExportValidationError, category_path_for, export_bank
 from app.question_management.service import row_to_domain
 from app.schemas.api import ExportRequest
 from app.security.deps import get_current_user
@@ -26,6 +26,21 @@ def _safe_filename(name: str | None) -> str:
     if not base.endswith(".xml"):
         base += ".xml"
     return base[:100]
+
+
+def _export_item(q: Question) -> ExportItem:
+    # Imported questions go back exactly as Moodle exported them; their
+    # original category path is kept so Moodle restores the same structure.
+    if q.raw_xml:
+        return ExportItem(
+            category_path=q.category_path or category_path_for(q.fach, q.category),
+            raw_xml=q.raw_xml,
+        )
+    return ExportItem(
+        category_path=category_path_for(q.fach, q.category),
+        question=row_to_domain(q),
+        name=q.name,
+    )
 
 
 @router.post("")
@@ -56,12 +71,12 @@ def export_xml(
             detail=f"These questions are not approved and cannot be exported: {not_approved}",
         )
 
-    # Preserve the requested order.
+    # Preserve the requested order; a question selected twice is written once.
     by_id = {r.id: r for r in rows}
-    ordered = [by_id[qid] for qid in payload.question_ids]
+    ordered = [by_id[qid] for qid in dict.fromkeys(payload.question_ids)]
 
     try:
-        xml = export_questions([row_to_domain(r) for r in ordered])
+        xml = export_bank([_export_item(r) for r in ordered])
     except ExportValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

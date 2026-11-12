@@ -12,6 +12,12 @@ Design decisions worth knowing:
     questions may be exported, enforced in the service layer.
   * Every content row has an owner, so authorization can be checked per row.
   * Exports are recorded in ``export_history`` for traceability.
+  * Questions imported from Moodle XML keep their original ``<question>``
+    element in ``raw_xml`` so they round-trip to Moodle unchanged (images,
+    grading settings, question types we do not model). The same question can
+    appear in several imported files; each appearance is a
+    ``question_occurrences`` row, so the bank stores it once but still knows
+    every file and category it came from.
 """
 from __future__ import annotations
 
@@ -97,6 +103,17 @@ class Question(Base):
     ai_generated: Mapped[bool] = mapped_column(Boolean, default=True)
     original_snapshot: Mapped[dict | None] = mapped_column(JSON)
 
+    # Question bank: subject and Moodle category of the first appearance.
+    name: Mapped[str | None] = mapped_column(String(255))
+    fach: Mapped[str | None] = mapped_column(String(255), index=True)
+    category: Mapped[str | None] = mapped_column(String(1000), index=True)
+    category_path: Mapped[str | None] = mapped_column(String(1000))
+    moodle_type: Mapped[str | None] = mapped_column(String(32))
+    raw_xml: Mapped[str | None] = mapped_column(Text)
+    # Hashes for duplicate detection: text only, and text + answers.
+    text_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -111,6 +128,23 @@ class Question(Base):
     reviews: Mapped[list["QuestionReview"]] = relationship(
         back_populates="question", cascade="all, delete-orphan"
     )
+    occurrences: Mapped[list["QuestionOccurrence"]] = relationship(
+        back_populates="question", cascade="all, delete-orphan",
+        order_by="QuestionOccurrence.id", lazy="selectin",
+    )
+
+    @property
+    def origins(self) -> list[dict]:
+        """Every imported file (and its category) this question appears in."""
+        return [
+            {
+                "file_id": o.import_file_id,
+                "filename": o.import_file.filename,
+                "fach": o.fach,
+                "category": o.category,
+            }
+            for o in self.occurrences
+        ]
 
 
 class Answer(Base):
@@ -160,3 +194,38 @@ class ExportHistory(Base):
     question_count: Mapped[int] = mapped_column(Integer, nullable=False)
     question_ids: Mapped[list] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImportFile(Base):
+    """A Moodle XML file the instructor imported into the question bank."""
+
+    __tablename__ = "import_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    fach: Mapped[str | None] = mapped_column(String(255))
+    content_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    question_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    new_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    occurrences: Mapped[list["QuestionOccurrence"]] = relationship(
+        back_populates="import_file", cascade="all, delete-orphan"
+    )
+
+
+class QuestionOccurrence(Base):
+    """One appearance of a bank question inside one imported file."""
+
+    __tablename__ = "question_occurrences"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True, nullable=False)
+    import_file_id: Mapped[int] = mapped_column(ForeignKey("import_files.id", ondelete="CASCADE"), index=True, nullable=False)
+    fach: Mapped[str | None] = mapped_column(String(255))
+    category: Mapped[str | None] = mapped_column(String(1000))
+
+    question: Mapped[Question] = relationship(back_populates="occurrences")
+    import_file: Mapped[ImportFile] = relationship(back_populates="occurrences", lazy="joined")

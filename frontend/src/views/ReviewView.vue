@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { api, ApiError, type Question } from "../api";
+import { typeLabel } from "../bank";
+import AiNav from "../components/AiNav.vue";
 
 const questions = ref<Question[]>([]);
 const loading = ref(true);
@@ -11,7 +13,8 @@ const edits = reactive<Record<number, Question>>({});
 async function refresh() {
   loading.value = true;
   try {
-  const list = await api.listQuestions();
+    // Imported questions are managed in Moodle; only AI output is reviewed here.
+    const list = await api.listQuestions({ source: "ai" });
     for (const q of list) edits[q.id] = structuredClone(q);
     questions.value = list;
   } finally {
@@ -20,11 +23,6 @@ async function refresh() {
 }
 onMounted(refresh);
 
-const typeLabel: Record<string, string> = {
-  multiple_choice: "Multiple Choice",
-  true_false: "Wahr / Falsch",
-  short_answer: "Kurzantwort",
-};
 
 async function save(q: Question) {
   error.value = "";
@@ -75,10 +73,11 @@ async function remove(q: Question) {
 </script>
 
 <template>
-  <h1>Fragen prüfen & freigeben</h1>
+  <AiNav />
   <p class="muted">
     Jede KI-generierte Frage muss vor dem Export freigegeben werden.
     Bearbeiten Sie bei Bedarf Text und Antworten. Bearbeitete Fragen gehen zurück in den Status „offen“.
+    Freigegebene Fragen exportieren Sie in der <router-link to="/bank?source=ai">Fragenbank</router-link>.
   </p>
 
   <div v-if="error" class="notice error">{{ error }}</div>
@@ -91,7 +90,7 @@ async function remove(q: Question) {
     <div class="row" style="justify-content: space-between">
       <span>
         <span class="badge" :class="q.status">{{ q.status }}</span>
-        <span class="muted"> · {{ typeLabel[q.question_type] }}</span>
+        <span class="muted"> · {{ typeLabel(q.question_type) }}</span>
       </span>
       <span class="muted">
         Grounding: {{ (q.grounding_score * 100).toFixed(0) }}%

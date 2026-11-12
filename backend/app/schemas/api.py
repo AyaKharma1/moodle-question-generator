@@ -68,11 +68,20 @@ class QuestionUpdate(BaseModel):
     answers: Optional[list[AnswerIn]] = None
 
 
+class OriginOut(BaseModel):
+    """Where a bank question was found: one imported file and its category."""
+    file_id: int
+    filename: str
+    fach: Optional[str]
+    category: Optional[str]
+
+
 class QuestionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     document_id: Optional[int]
-    question_type: QuestionType
+    # Imported questions may have Moodle types we do not model (essay, ...).
+    question_type: str
     question_text: str
     explanation: str
     difficulty: Difficulty
@@ -84,6 +93,12 @@ class QuestionOut(BaseModel):
     answers: list[AnswerOut]
     created_at: datetime
     updated_at: datetime
+    name: Optional[str] = None
+    fach: Optional[str] = None
+    category: Optional[str] = None
+    moodle_type: Optional[str] = None
+    origins: list[OriginOut] = []
+    exported_in: list[str] = []
 
 
 class GenerateRequest(BaseModel):
@@ -92,6 +107,8 @@ class GenerateRequest(BaseModel):
     num_questions: int = Field(default=5, ge=1, le=50)
     difficulty: Difficulty = Difficulty.medium
     language: Language = Language.de
+    fach: Optional[str] = Field(default=None, max_length=255)
+    category: Optional[str] = Field(default=None, max_length=1000)
 
 
 class GenerateResponse(BaseModel):
@@ -109,3 +126,28 @@ class ReviewAction(BaseModel):
 class ExportRequest(BaseModel):
     question_ids: list[int] = Field(min_length=1)
     filename: Optional[str] = Field(default=None, max_length=100)
+
+
+# ---------------- question bank ----------------
+
+class ImportSummaryOut(BaseModel):
+    file_id: Optional[int] = None
+    filename: str
+    fach: Optional[str] = None
+    total: int = 0
+    new: int = 0
+    existing: int = 0
+    conflicts: int = 0
+    categories: list[str] = []
+    error: Optional[str] = None
+
+
+class ImportFileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    filename: str
+    fach: Optional[str]
+    size_bytes: int
+    question_count: int
+    new_count: int
+    created_at: datetime

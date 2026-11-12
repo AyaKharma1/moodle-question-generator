@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetisches Beispiel: Moodle-Export „Computersysteme“, Wintersemester 2024. -->
+<quiz>
+  <question type="category">
+    <category><text>$course$/top/Computersysteme/PC-Hardware</text></category>
+    <info format="moodle_auto_format"><text></text></info>
+  </question>
+
+  <question type="multichoice">
+    <name><text>RAM Definition</text></name>
+    <questiontext format="html"><text><![CDATA[<p>Was ist <strong>RAM</strong>?</p>]]></text></questiontext>
+    <generalfeedback format="html"><text><![CDATA[<p>RAM ist der flüchtige Arbeitsspeicher.</p>]]></text></generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <answer fraction="100" format="html"><text><![CDATA[Flüchtiger Arbeitsspeicher]]></text><feedback format="html"><text></text></feedback></answer>
+    <answer fraction="0" format="html"><text><![CDATA[Dauerhafter Massenspeicher]]></text><feedback format="html"><text></text></feedback></answer>
+    <answer fraction="0" format="html"><text><![CDATA[Grafikprozessor]]></text><feedback format="html"><text></text></feedback></answer>
+  </question>
+
+  <question type="truefalse">
+    <name><text>CPU Takt</text></name>
+    <questiontext format="html"><text><![CDATA[<p>Die Taktfrequenz einer CPU wird in Hertz angegeben.</p>]]></text></questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>1.0000000</penalty>
+    <hidden>0</hidden>
+    <answer fraction="100" format="moodle_auto_format"><text>true</text><feedback format="html"><text></text></feedback></answer>
+    <answer fraction="0" format="moodle_auto_format"><text>false</text><feedback format="html"><text></text></feedback></answer>
+  </question>
+
+  <question type="multichoice">
+    <name><text>SSD Vorteil</text></name>
+    <questiontext format="html"><text><![CDATA[<p>Welcher Vorteil hat eine SSD gegenüber einer HDD?</p>]]></text></questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <answer fraction="100" format="html"><text><![CDATA[Kürzere Zugriffszeiten]]></text><feedback format="html"><text></text></feedback></answer>
+    <answer fraction="0" format="html"><text><![CDATA[Mehr bewegliche Teile]]></text><feedback format="html"><text></text></feedback></answer>
+  </question>
+
+  <question type="shortanswer">
+    <name><text>Mainboard Bus</text></name>
+    <questiontext format="html"><text><![CDATA[<p>Wie heißt die Hauptplatine eines PCs auf Englisch?</p>]]></text></questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <usecase>0</usecase>
+    <answer fraction="100" format="moodle_auto_format"><text>Mainboard</text><feedback format="html"><text></text></feedback></answer>
+    <answer fraction="100" format="moodle_auto_format"><text>Motherboard</text><feedback format="html"><text></text></feedback></answer>
+  </question>
+
+  <question type="category">
+    <category><text>$course$/top/Computersysteme/Betriebssysteme</text></category>
+    <info format="moodle_auto_format"><text></text></info>
+  </question>
+
+  <question type="multichoice">
+    <name><text>Deadlock</text></name>
+    <questiontext format="html"><text><![CDATA[<p>Was ist eine Voraussetzung für einen Deadlock?</p>]]></text></questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.3333333</penalty>
+    <hidden>0</hidden>
+    <single>true</single>
+    <shuffleanswers>true</shuffleanswers>
+    <answernumbering>abc</answernumbering>
+    <answer fraction="100" format="html"><text><![CDATA[Zyklisches Warten]]></text><feedback format="html"><text></text></feedback></answer>
+    <answer fraction="0" format="html"><text><![CDATA[Unendlich viel Speicher]]></text><feedback format="html"><text></text></feedback></answer>
+    <answer fraction="0" format="html"><text><![CDATA[Nur ein einziger Prozess]]></text><feedback format="html"><text></text></feedback></answer>
+  </question>
+
+  <question type="truefalse">
+    <name><text>Scheduler</text></name>
+    <questiontext format="html"><text><![CDATA[<p>Der Scheduler entscheidet, welcher Prozess als nächstes die CPU erhält.</p>]]></text></questiontext>
+    <generalfeedback format="html"><text></text></generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>1.0000000</penalty>
+    <hidden>0</hidden>
+    <answer fraction="100" format="moodle_auto_format"><text>true</text><feedback format="html"><text></text></feedback></answer>
+    <answer fraction="0" format="moodle_auto_format"><text>false</text><feedback format="html"><text></text></feedback></answer>
+  </question>
+</quiz>
