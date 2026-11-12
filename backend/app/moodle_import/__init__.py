@@ -8,6 +8,7 @@ from app.moodle_import.parser import (  # noqa: F401
     normalize,
     parse_moodle_xml,
     plain_text,
+    search_text_from_xml,
     split_category_path,
     split_fach_and_category,
 )

@@ -17,6 +17,7 @@ from app.models import (
     QuestionStatus,
     User,
 )
+from app.question_bank.search import build_search_text
 from app.schemas.question import (
     AnswerOption,
     Difficulty,
@@ -62,6 +63,8 @@ def persist_generated(
                     grounding_score=item.validation.grounding_score,
                 )
             )
+        row.name = row.name or gq.question_text[:60]
+        row.search_text = build_search_text(row)
         db.add(row)
         created.append(row)
 

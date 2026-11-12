@@ -151,3 +151,13 @@ class ImportFileOut(BaseModel):
     question_count: int
     new_count: int
     created_at: datetime
+    categories: list[str] = []
+
+
+class BankPage(BaseModel):
+    items: list[QuestionOut]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+    facets: dict

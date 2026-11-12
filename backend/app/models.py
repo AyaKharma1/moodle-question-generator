@@ -113,6 +113,10 @@ class Question(Base):
     # Hashes for duplicate detection: text only, and text + answers.
     text_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
     fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Case-folded plain text of everything in the question (name, text, answers,
+    # sub-questions, feedback) for the bank search. Built by
+    # ``question_bank.search.build_search_text``.
+    search_text: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

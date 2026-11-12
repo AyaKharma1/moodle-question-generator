@@ -29,6 +29,7 @@ from app.models import (
     QuestionStatus,
     User,
 )
+from app.question_bank.search import build_search_text
 from app.moodle_import import (
     NO_CATEGORY,
     ParsedQuestion,
@@ -96,6 +97,7 @@ def _new_question(owner: User, parsed: ParsedQuestion, fach: str | None,
         row.answers.append(Answer(
             text=a.text, is_correct=a.is_correct, feedback=a.feedback, position=pos,
         ))
+    row.search_text = build_search_text(row)
     return row
 
 
