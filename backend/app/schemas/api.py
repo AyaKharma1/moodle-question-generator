@@ -142,6 +142,7 @@ class ImportSummaryOut(BaseModel):
     existing: int = 0
     conflicts: int = 0
     categories: list[str] = []
+    report: Optional[dict] = None
     error: Optional[str] = None
 
 
@@ -155,6 +156,7 @@ class ImportFileOut(BaseModel):
     new_count: int
     created_at: datetime
     categories: list[str] = []
+    report: Optional[dict] = None
 
 
 class BankPage(BaseModel):

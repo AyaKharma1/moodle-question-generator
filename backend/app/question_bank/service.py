@@ -31,8 +31,10 @@ from app.models import (
     User,
 )
 from app.question_bank.search import build_search_text
+from app.moodle_import.report import build_report
 from app.moodle_import import (
     NO_CATEGORY,
+    MoodleImportError,
     ParsedQuestion,
     missing_files_in_xml,
     normalize,
@@ -65,6 +67,7 @@ class ImportSummary:
     existing: int = 0
     conflicts: int = 0
     categories: list[str] = field(default_factory=list)
+    report: dict | None = None
 
 
 def _filename_stem(filename: str) -> str:
@@ -115,6 +118,11 @@ def import_moodle_file(db: Session, *, owner: User, filename: str,
         )
 
     parsed_questions = parse_moodle_xml(data)
+    if not parsed_questions:
+        raise MoodleImportError(
+            "Die Datei enthält keine Fragen (nur Kategorien oder leer). "
+            "Bitte beim Export in Moodle eine Kategorie mit Fragen wählen."
+        )
     fach = (fach or "").strip() or None
 
     import_file = ImportFile(
@@ -157,6 +165,7 @@ def import_moodle_file(db: Session, *, owner: User, filename: str,
 
     import_file.question_count = summary.total
     import_file.new_count = summary.new
+    summary.report = import_file.report = build_report(parsed_questions)
     summary.categories = categories
     db.flush()
     return summary
