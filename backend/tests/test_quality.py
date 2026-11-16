@@ -266,3 +266,39 @@ def test_cards_show_hints_until_the_lecturer_decided(auth_client):
     auth_client.post(f"/api/bank/questions/{ids['Deadlock']}/decision", json={"state": "reviewed"})
     card = by_name()["Deadlock"]
     assert card["flags"] == [] and card["decision"] == "reviewed"
+
+
+# ---------------- export preview and traceable history ----------------
+
+def test_preview_reports_contents_exclusions_and_warnings_without_side_effects(auth_client):
+    _import(auth_client, WS24, SS25, DB24)
+    ids = _ids(auth_client)
+    auth_client.post(f"/api/bank/questions/{ids['SSD Vorteil']}/decision", json={"state": "excluded", "note": "veraltet"})
+    pick = [ids[n] for n in ("SSD Vorteil", "Fremdschlüssel", "Netzwerkkarte", "SELECT")]
+    pre = auth_client.post("/api/export/preview", json={"question_ids": pick, "category_prefix": "Klausur", "filename": "k 1"}).json()
+    assert pre["count"] == 3 and pre["filename"] == "k_1.xml"
+    assert pre["excluded"] == [{"id": ids["SSD Vorteil"], "name": "SSD Vorteil", "reason": "Von Ihnen ausgeschlossen: veraltet"}]
+    assert pre["can_export"] is False and "ausgeschlossen" in pre["blocked_reason"].lower() or "Ausgeschlossene" in pre["blocked_reason"]
+    assert all(c["path"].startswith("$course$/top/Klausur") for c in pre["categories"]) and sum(c["count"] for c in pre["categories"]) == 3
+    assert pre["warnings"]["counts"]["critical"] == 2 and {e["code"] for e in pre["warnings"]["examples"]} == {"missing_media", "no_correct_answer"}
+    assert pre["unchanged_originals"] == 3 and pre["generated"] == 0
+    assert "Garantie" in pre["disclaimer"] and len(pre["checklist"]) >= 4
+    assert auth_client.get("/api/export/history").json() == []                      # preview leaves no trace
+
+    clean = auth_client.post("/api/export/preview", json={"question_ids": [ids["SELECT"]]}).json()
+    assert clean["can_export"] is True and clean["excluded"] == [] and clean["warnings"]["counts"] == {"critical": 0, "review": 0, "info": 0}
+    assert auth_client.post("/api/export/preview", json={"question_ids": [999999]}).status_code == 404
+
+
+def test_export_history_keeps_note_summary_and_marks_repeats(auth_client, make_user_client):
+    _import(auth_client, WS24, SS25, DB24)
+    ids = _ids(auth_client)
+    body = {"question_ids": [ids["Fremdschlüssel"], ids["SELECT"]], "filename": "klausur", "note": "Klausur WS 25/26"}
+    assert auth_client.post("/api/export", json=body).status_code == 200
+    first = auth_client.get("/api/export/history").json()[0]
+    assert first["note"] == "Klausur WS 25/26" and first["summary"]["count"] == 2
+    assert first["summary"]["warnings"]["counts"]["critical"] == 1                   # recorded as it was at export time
+    pre = auth_client.post("/api/export/preview", json={"question_ids": [ids["SELECT"]]}).json()
+    assert pre["previously_exported"] == 1 and pre["previous_files"] == ["klausur.xml"]
+    other = make_user_client("o@example.com")
+    assert other.post("/api/export/preview", json={"question_ids": [ids["SELECT"]]}).status_code == 404

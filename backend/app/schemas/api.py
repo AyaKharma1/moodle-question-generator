@@ -131,6 +131,8 @@ class ExportRequest(BaseModel):
     filename: Optional[str] = Field(default=None, max_length=100)
     # Puts all exported questions into their own category tree below this name.
     category_prefix: Optional[str] = Field(default=None, max_length=200)
+    # Free text for the history, e.g. "Klausur WS 25/26".
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 # ---------------- question bank ----------------
