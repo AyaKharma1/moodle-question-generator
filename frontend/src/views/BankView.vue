@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { api, ApiError, type BankPage, type BankQuery, type FacetValue, type SelectionCheck } from "../api";
+import { api, ApiError, type BankPage, type BankQuery, type ExportPreview, type FacetValue, type SelectionCheck } from "../api";
 import {
   answerText, downloadBlob, excerpt, FLAG_LABELS, formatNumber, highlight, matchFields, plainText, searchTerms,
   selection, setSelected, SORT_LABELS, toggleSelected, typeLabel,
@@ -37,6 +37,7 @@ const query = computed<BankQuery>(() => ({
   source: str(route.query.source) || undefined,
   flag: str(route.query.flag) || undefined,
   exported: str(route.query.exported) || undefined,
+  decision: str(route.query.decision) || undefined,
   sort: str(route.query.sort) || "newest",
   page: Number(route.query.page) || 1,
   page_size: Number(route.query.size) || 50,
@@ -97,6 +98,7 @@ const activeFilters = computed(() => {
     q.type && { key: "type", label: `Typ: ${typeLabel(q.type)}` },
     q.source && { key: "source", label: q.source === "ai" ? "Nur KI-generiert" : "Nur aus Moodle importiert" },
     q.flag && { key: "flag", label: `Hinweis: ${FLAG_LABELS[q.flag] ?? q.flag}` },
+    q.decision && { key: "decision", label: { open: "Ohne Entscheidung", reviewed: "Geprüft", excluded: "Ausgeschlossen" }[q.decision] ?? q.decision },
     q.exported && { key: "exported", label: q.exported === "no" ? "Noch nie exportiert" : "Schon exportiert" },
   ].filter(Boolean) as { key: string; label: string }[];
 });
@@ -138,7 +140,7 @@ function goTo(page: number) {
 // ---------- selection ----------
 
 const selectedIds = computed(() => [...selection.ids]);
-const selectableOnPage = computed(() => items.value.filter((q) => q.status === "approved").map((q) => q.id));
+const selectableOnPage = computed(() => items.value.filter((q) => q.status === "approved" && q.decision !== "excluded").map((q) => q.id));
 const pageAllSelected = computed(
   () => selectableOnPage.value.length > 0 && selectableOnPage.value.every((id) => selection.ids.has(id)),
 );
@@ -212,13 +214,39 @@ function randomPick() {
   }, "Zufallsauswahl fehlgeschlagen.");
 }
 
+const preview = ref<ExportPreview | null>(null);
+const note = ref("");
+const dialog = ref<HTMLDialogElement | null>(null);
+
+function openPreview() {
+  return guarded(async () => {
+    const name = filename.value.trim() || "moodle_fragen";
+    preview.value = await api.exportPreview(selectedIds.value, name, prefix.value.trim());
+    dialog.value?.showModal();
+  }, "Die Vorschau konnte nicht erstellt werden.");
+}
+
+function closePreview() {
+  dialog.value?.close();
+  preview.value = null;
+}
+
+function dropExcluded() {
+  if (!preview.value) return;
+  setSelected(preview.value.excluded.map((e) => e.id), false);
+  closePreview();
+  success.value = "Ausgeschlossene Fragen wurden aus der Auswahl entfernt. Bitte die Vorschau erneut öffnen.";
+}
+
 function exportSelected() {
   return guarded(async () => {
     const name = filename.value.trim() || "moodle_fragen";
-    const blob = await api.exportXml(selectedIds.value, name, prefix.value.trim());
+    const blob = await api.exportXml(selectedIds.value, name, prefix.value.trim(), note.value.trim());
     downloadBlob(blob, name.endsWith(".xml") ? name : `${name}.xml`);
-    success.value = `${selection.ids.size} Frage(n) als „${name}.xml“ exportiert. In Moodle: Fragensammlung → Importieren → Moodle-XML.`;
+    success.value = `${selection.ids.size} Frage(n) als „${name}.xml“ exportiert und im Verlauf vermerkt. Bitte zuerst in einem Testkurs in Moodle importieren.`;
     setSelected(selectedIds.value, false);
+    closePreview();
+    note.value = "";
     await load();
   }, "Export fehlgeschlagen.");
 }
@@ -280,6 +308,15 @@ function exportSelected() {
         </select>
       </div>
       <div>
+        <label for="decision">Ihre Entscheidung</label>
+        <select id="decision" :value="query.decision ?? ''" @change="setQuery({ decision: ($event.target as HTMLSelectElement).value })">
+          <option value="">Alle</option>
+          <option value="open">Ohne Entscheidung</option>
+          <option value="reviewed">Geprüft</option>
+          <option value="excluded">Ausgeschlossen</option>
+        </select>
+      </div>
+      <div>
         <label for="sort">Sortierung</label>
         <select id="sort" :value="query.sort" @change="setQuery({ sort: ($event.target as HTMLSelectElement).value })">
           <option v-for="(label, key) in SORT_LABELS" :key="key" :value="key">{{ label }}</option>
@@ -329,18 +366,20 @@ function exportSelected() {
 
   <div :style="{ opacity: loading ? 0.55 : 1, transition: 'opacity 0.15s' }">
     <div v-for="q in items" :key="q.id" class="card tight q-card">
-      <input type="checkbox" :checked="selection.ids.has(q.id)" :disabled="q.status !== 'approved'"
-             :title="q.status !== 'approved' ? 'Nur freigegebene Fragen können exportiert werden' : 'Für den Export auswählen'"
+      <input type="checkbox" :checked="selection.ids.has(q.id)" :disabled="q.status !== 'approved' || q.decision === 'excluded'" :aria-label="`${q.name ?? 'Frage'} auswählen`"
+             :title="q.decision === 'excluded' ? 'Von Ihnen ausgeschlossen' : q.status !== 'approved' ? 'Nur freigegebene Fragen können exportiert werden' : 'Für den Export auswählen'"
              @change="toggleSelected(q.id)" style="margin-top: 0.3rem" />
       <div>
         <div class="meta">
-          <span class="q-title">
+          <router-link class="q-title" :to="{ name: 'question', params: { id: q.id } }" title="Herkunft, Varianten und Hinweise ansehen">
             <template v-for="(seg, i) in highlight(q.name || 'Ohne Namen', terms)" :key="i"><mark v-if="seg.hit">{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template>
-          </span>
+          </router-link>
+          <span v-if="q.decision === 'excluded'" class="badge danger">ausgeschlossen</span>
+          <span v-else-if="q.decision === 'reviewed'" class="badge ok">geprüft</span>
           <span class="badge neutral">{{ typeLabel(q.question_type) }}</span>
           <span v-if="q.ai_generated" class="badge violet">KI</span>
           <span v-if="q.status !== 'approved'" class="badge" :class="q.status">{{ q.status === "pending" ? "noch nicht freigegeben" : "abgelehnt" }}</span>
-          <span v-for="f in q.flags" :key="f.label" class="badge" :class="f.kind">{{ f.label }}</span>
+          <span v-for="f in q.flags" :key="f.label" class="badge" :class="f.kind" :title="f.detail">{{ f.label }}</span>
           <span v-if="terms.length && hits.get(q.id)?.length" class="muted">· Treffer in: {{ hits.get(q.id)!.join(", ") }}</span>
         </div>
         <div class="q-text">
@@ -382,9 +421,48 @@ function exportSelected() {
     <input v-model="prefix" placeholder="Kategorie-Ordner (optional), z. B. Prüfung WS 25/26" aria-label="Kategorie-Ordner"
            title="Legt alle Fragen in eigene Kategorien unter diesem Namen, damit sie sich in Moodle nicht mit den Originalen vermischen" style="width: 330px" />
     <input v-model="filename" placeholder="Dateiname" aria-label="Dateiname" />
-    <button :disabled="busy" @click="exportSelected">
-      <span v-if="busy" class="spinner" /> Als Moodle-XML exportieren
+    <button :disabled="busy" @click="openPreview">
+      <span v-if="busy" class="spinner" /> Export-Vorschau
     </button>
     <div v-for="w in selectionWarnings" :key="w" class="warn">⚠ {{ w }}</div>
   </div>
+
+  <dialog ref="dialog" class="modal" aria-labelledby="pv-title" @close="preview = null">
+    <template v-if="preview">
+      <h2 id="pv-title" style="margin-top: 0">Export-Vorschau</h2>
+      <p>
+        <strong>{{ preview.count }}</strong> Frage(n) → <code>{{ preview.filename }}</code>.
+        {{ preview.unchanged_originals }} unverändert aus der Originaldatei übernommen<template v-if="preview.generated">, {{ preview.generated }} neu erzeugt (KI)</template>.
+      </p>
+      <div v-if="preview.excluded.length" class="notice error" role="alert">
+        <strong>{{ preview.excluded.length }} Frage(n) in der Auswahl können nicht exportiert werden:</strong>
+        <ul style="margin: 0.3rem 0 0; padding-left: 1.1rem"><li v-for="e in preview.excluded" :key="e.id">{{ e.name ?? e.id }}: {{ e.reason }}</li></ul>
+        <button class="secondary small" style="margin-top: 0.4rem" @click="dropExcluded">Aus der Auswahl entfernen</button>
+      </div>
+      <h3>Kategorien in Moodle</h3>
+      <ul style="margin-top: 0"><li v-for="c in preview.categories" :key="c.path"><code>{{ c.path }}</code> · {{ c.count }}</li></ul>
+      <h3>Offene Hinweise zu diesen Fragen</h3>
+      <p v-if="!preview.warnings.counts.critical && !preview.warnings.counts.review && !preview.warnings.counts.info" class="muted" style="margin-top: 0">Keine offenen Hinweise.</p>
+      <template v-else>
+        <div class="chips">
+          <span class="sev critical">Kritisch {{ preview.warnings.counts.critical }}</span>
+          <span class="sev review">Überprüfen {{ preview.warnings.counts.review }}</span>
+          <span class="sev info">Information {{ preview.warnings.counts.info }}</span>
+        </div>
+        <ul><li v-for="w in preview.warnings.examples" :key="w.question_id + w.code"><router-link :to="{ name: 'question', params: { id: w.question_id } }">{{ w.title }}</router-link>: {{ w.detail }}</li></ul>
+      </template>
+      <p v-if="preview.previously_exported" class="muted">{{ preview.previously_exported }} Frage(n) wurden schon exportiert ({{ preview.previous_files.join(", ") }}).</p>
+      <h3>Vor dem Import in Moodle</h3>
+      <ol style="margin-top: 0"><li v-for="c in preview.checklist" :key="c">{{ c }}</li></ol>
+      <p class="muted">{{ preview.disclaimer }}</p>
+      <label for="exnote">Verwendungszweck (für den Verlauf, optional)</label>
+      <input id="exnote" v-model="note" maxlength="500" placeholder="z. B. Klausur WS 25/26" />
+      <div class="row" style="margin-top: 0.8rem; justify-content: flex-end">
+        <button class="secondary" @click="closePreview">Abbrechen</button>
+        <button :disabled="busy || !preview.can_export" @click="exportSelected">
+          <span v-if="busy" class="spinner" /> Datei herunterladen
+        </button>
+      </div>
+    </template>
+  </dialog>
 </template>

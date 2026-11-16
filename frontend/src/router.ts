@@ -8,7 +8,8 @@ const routes = [
   { path: "/", name: "dashboard", meta: { title: "Übersicht" }, component: () => import("./views/DashboardView.vue") },
   { path: "/import", name: "import", meta: { title: "Importieren" }, component: () => import("./views/ImportView.vue") },
   { path: "/bank", name: "bank", meta: { title: "Fragenbank" }, component: () => import("./views/BankView.vue") },
-  { path: "/pruefung", name: "analysis", meta: { title: "Qualität" }, component: () => import("./views/AnalysisView.vue") },
+  { path: "/pruefung", name: "analysis", meta: { title: "Qualität" }, component: () => import("./views/QualityView.vue") },
+  { path: "/frage/:id(\\d+)", name: "question", meta: { title: "Frage" }, component: () => import("./views/QuestionView.vue") },
   { path: "/planer", name: "planner", meta: { title: "Testplaner" }, component: () => import("./views/PlannerView.vue") },
   { path: "/verlauf", name: "history", meta: { title: "Verlauf" }, component: () => import("./views/HistoryView.vue") },
   // Optional AI generator: lecture material -> new questions.

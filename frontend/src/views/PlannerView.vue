@@ -4,10 +4,13 @@ import { api, ApiError, type BankOverview, type PlanResult } from "../api";
 import { downloadBlob, formatNumber, formatVariants, LEVEL_BADGE, LEVEL_TEXT } from "../bank";
 
 const SEP = "\u0001";
-interface Row { key: string; count: number }
+interface Row { key: string; count: number; percent: number }
 
 const overview = ref<BankOverview | null>(null);
-const rows = ref<Row[]>([{ key: "", count: 4 }]);
+const rows = ref<Row[]>([{ key: "", count: 4, percent: 100 }]);
+const mode = ref<"count" | "percent">("count");
+const total = ref(20);
+const seedInput = ref<number | undefined>(undefined);
 const students = ref(100);
 const onlyUnused = ref(false);
 const prefix = ref("Prüfung");
@@ -23,20 +26,23 @@ onMounted(async () => {
   // start with the biggest category so the first plan is meaningful
   const all = (overview.value.tree ?? []).flatMap((f) => f.categories.map((c) => ({ key: f.fach + SEP + c.name, n: c.count })));
   all.sort((a, b) => b.n - a.n);
-  if (all.length) rows.value = [{ key: all[0].key, count: 4 }];
+  if (all.length) rows.value = [{ key: all[0].key, count: 4, percent: 100 }];
 });
 
-watch([rows, students, onlyUnused], () => { if (plan.value) stale.value = true; }, { deep: true });
+watch([rows, students, onlyUnused, mode, total, seedInput], () => { if (plan.value) stale.value = true; }, { deep: true });
 
 function parse(key: string): { fach: string | null; category: string } {
   const [fach, category] = key.split(SEP);
   return { fach: fach === "Ohne Fach" ? null : fach, category };
 }
-const slots = computed(() => rows.value.filter((r) => r.key).map((r) => ({ ...parse(r.key), count: r.count })));
+const slots = computed(() => rows.value.filter((r) => r.key).map((r) =>
+  mode.value === "percent" ? { ...parse(r.key), percent: r.percent } : { ...parse(r.key), count: r.count }));
+const percentSum = computed(() => Math.round(rows.value.filter((r) => r.key).reduce((n, r) => n + (Number(r.percent) || 0), 0) * 100) / 100);
+const extra = computed(() => (mode.value === "percent" ? { total: total.value } : {}));
 const chosen = computed(() => new Set(rows.value.map((r) => r.key)));
 
 function addRow() {
-  rows.value.push({ key: "", count: 2 });
+  rows.value.push({ key: "", count: 2, percent: 0 });
 }
 function removeRow(i: number) {
   rows.value.splice(i, 1);
@@ -49,9 +55,13 @@ async function run() {
     error.value = "Bitte mindestens eine Kategorie wählen.";
     return;
   }
+  if (mode.value === "percent" && percentSum.value !== 100) {
+    error.value = `Die Prozentwerte ergeben ${percentSum.value} %. Sie müssen zusammen genau 100 % ergeben.`;
+    return;
+  }
   busy.value = true;
   try {
-    plan.value = await api.plan({ slots: slots.value, students: students.value, only_unused: onlyUnused.value });
+    plan.value = await api.plan({ slots: slots.value, students: students.value, only_unused: onlyUnused.value, seed: seedInput.value || undefined, ...extra.value });
     stale.value = false;
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : "Planen fehlgeschlagen.";
@@ -80,7 +90,7 @@ async function downloadCsv() {
   busy.value = true;
   try {
     const blob = await api.planCsv({
-      slots: slots.value, students: students.value, seed: plan.value.seed, only_unused: onlyUnused.value,
+      slots: slots.value, students: students.value, seed: plan.value.seed, only_unused: onlyUnused.value, ...extra.value,
     });
     downloadBlob(blob, "verteilungsplan.csv");
   } catch (e) {
@@ -104,6 +114,15 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
 
   <div class="card">
     <h2>1 · Was soll der Test enthalten?</h2>
+    <div class="tabs" role="group" aria-label="Verteilung festlegen">
+      <button :class="{ active: mode === 'count' }" @click="mode = 'count'">Anzahl je Kategorie</button>
+      <button :class="{ active: mode === 'percent' }" @click="mode = 'percent'">Prozentuale Verteilung</button>
+    </div>
+    <div v-if="mode === 'percent'" style="max-width: 320px; margin-bottom: 0.5rem">
+      <label for="total">Fragen pro Person insgesamt</label>
+      <input id="total" v-model.number="total" type="number" min="1" max="100" />
+      <div class="hint">Die Prozente werden auf ganze Fragen gerundet (größter Rest zuerst), sodass die Summe stimmt. Die tatsächliche Anzahl sehen Sie unten im Plan.</div>
+    </div>
     <div v-for="(row, i) in rows" :key="i" class="plan-row">
       <div>
         <label :for="`cat${i}`">Kategorie</label>
@@ -117,18 +136,30 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
           </optgroup>
         </select>
       </div>
-      <div>
+      <div v-if="mode === 'count'">
         <label :for="`n${i}`">Fragen pro Person</label>
         <input :id="`n${i}`" v-model.number="row.count" type="number" min="1" max="50" />
+      </div>
+      <div v-else>
+        <label :for="`p${i}`">Anteil in %</label>
+        <input :id="`p${i}`" v-model.number="row.percent" type="number" min="1" max="100" step="any" />
       </div>
       <button class="ghost" :aria-label="`Kategorie ${i + 1} entfernen`" @click="removeRow(i)">Entfernen</button>
     </div>
     <button class="secondary small" @click="addRow">+ Weitere Kategorie</button>
+    <p v-if="mode === 'percent'" :class="percentSum === 100 ? 'muted' : 'notice warn'" role="status" style="margin-bottom: 0">
+      Summe: <strong>{{ percentSum }} %</strong><template v-if="percentSum !== 100"> (muss 100 % sein)</template>
+    </p>
 
     <div class="grid-2" style="margin-top: 1rem">
       <div>
         <label for="students">Wie viele Studierende schreiben den Test?</label>
         <input id="students" v-model.number="students" type="number" min="1" max="2000" />
+      </div>
+      <div>
+        <label for="seed">Startwert (optional)</label>
+        <input id="seed" v-model.number="seedInput" type="number" min="1" placeholder="leer = zufällig" />
+        <div class="hint">Derselbe Startwert ergibt dieselbe Simulation und denselben Verteilungsplan, so lässt sich ein Ergebnis später wiederholen.</div>
       </div>
       <div>
         <label style="margin-top: 1.9rem; display: flex; gap: 0.5rem; align-items: center; font-weight: 400">
@@ -171,8 +202,11 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
           <span v-if="s.shared_expected !== null" class="chip">zwei Personen haben im Schnitt <strong>{{ formatNumber(s.shared_expected) }}</strong> gleiche</span>
           <span class="chip">empfohlen: mindestens <strong>{{ s.recommended_min }}</strong></span>
         </div>
-        <div class="bar" style="margin-top: 0.5rem" :title="`${s.pool_size} von empfohlen ${s.recommended_min}`">
-          <span :style="{ width: Math.min(100, (s.pool_size / s.recommended_min) * 100) + '%',
+        <p class="muted" style="margin: 0.4rem 0 0">
+          Abdeckung: <strong>{{ s.coverage_percent }} %</strong> der empfohlenen Poolgröße<template v-if="s.missing_for_recommended">, es fehlen noch <strong>{{ s.missing_for_recommended }}</strong> Frage(n)</template><template v-else>, ausreichend</template>.
+        </p>
+        <div class="bar" style="margin-top: 0.3rem" :title="`${s.pool_size} von empfohlen ${s.recommended_min}`">
+          <span :style="{ width: s.coverage_percent + '%',
                           background: s.level === 'good' ? 'var(--ok)' : s.level === 'tight' ? 'var(--warn)' : 'var(--danger)' }" />
         </div>
         <details v-if="s.removed.length" style="margin-top: 0.5rem">
@@ -216,6 +250,26 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
       </div>
     </div>
 
+    <div v-if="plan.ok && plan.random && plan.balanced" class="card">
+      <h2>Verteilung der Überschneidungen</h2>
+      <p class="muted" style="margin-top: 0">Wie viele Personenpaare (aus {{ formatNumber(plan.random.pairs_compared) }} verglichenen) haben genau so viele gleiche Fragen?</p>
+      <div v-for="(label, key) in { random: 'Zufällig (wie Moodle)', balanced: 'Feste Verteilung' }" :key="key" style="margin-bottom: 0.8rem">
+        <strong>{{ label }}</strong>
+        <div v-for="h in plan[key as 'random' | 'balanced']!.overlap_histogram" :key="h.shared" class="hbar">
+          <span style="width: 7rem">{{ h.shared }} gleiche</span>
+          <span class="track"><span class="fill" :style="{ width: (100 * h.pairs / plan[key as 'random' | 'balanced']!.pairs_compared) + '%' }" /></span>
+          <span style="width: 6rem; text-align: right">{{ formatNumber(h.pairs) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="plan.statements.length" class="card">
+      <h2>Was ist berechnet, simuliert, nicht garantierbar?</h2>
+      <div v-for="st in plan.statements" :key="st.text" class="statement" :class="st.kind">
+        <strong>{{ { calculated: "Berechnet", simulated: "Simuliert", not_guaranteed: "Nicht garantierbar" }[st.kind] }}:</strong> {{ st.text }}
+      </div>
+    </div>
+
     <div v-if="plan.ok" class="card">
       <h2>4 · Weiter mit dem Plan</h2>
       <div class="grid-2">
@@ -241,7 +295,7 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
         <li v-for="s in plan.slots" :key="s.label">
           Kategorie <strong>„{{ s.category }}“</strong> im Ordner „{{ prefix || "…" }}“ wählen, <strong>{{ s.count }}</strong> Frage(n) hinzufügen.
         </li>
-        <li>Jede Person bekommt dann andere zufällige Fragen, und eine Frage kommt in einem Versuch nie doppelt vor.</li>
+        <li>Moodle zieht dann für jede Person zufällig. Eine Frage kommt in einem Versuch nie doppelt vor, aber Überschneidungen zwischen Personen sind möglich (siehe oben: „Nicht garantierbar“).</li>
       </ol>
       <p class="muted">
         Der Verteilungsplan (CSV) ist nur nötig, wenn Sie die Fragen fest zuteilen wollen, z. B. für gedruckte Tests.

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { authState, logout } from "./auth";
+import { api } from "./api";
+import { demoState, refreshDemo } from "./demo";
 
 const router = useRouter();
 const quick = ref("");
@@ -9,6 +11,15 @@ const quick = ref("");
 function quickSearch() {
   router.push({ name: "bank", query: quick.value.trim() ? { q: quick.value.trim() } : {} });
   quick.value = "";
+}
+
+watch(() => authState.user, (u) => { if (u) refreshDemo(); else demoState.loaded = false; }, { immediate: true });
+
+async function removeDemo() {
+  if (!confirm("Alle Demo-Daten entfernen? Ihre eigenen importierten Dateien bleiben unberührt.")) return;
+  await api.removeDemo();
+  await refreshDemo();
+  router.go(0);
 }
 
 function onLogout() {
@@ -39,6 +50,11 @@ function onLogout() {
       <span class="user">{{ authState.user.email }}</span>
       <button class="secondary small" @click="onLogout">Abmelden</button>
     </header>
+    <div v-if="demoState.loaded" class="demo-banner" role="status">
+      <strong>DEMO-MODUS</strong>
+      <span>{{ demoState.notice }}</span>
+      <button class="secondary small" @click="removeDemo">Demo-Daten entfernen</button>
+    </div>
     <main id="main" class="content" tabindex="-1">
       <router-view />
     </main>
