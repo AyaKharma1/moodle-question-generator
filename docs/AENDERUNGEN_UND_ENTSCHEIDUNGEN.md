@@ -64,7 +64,7 @@ Kriterien: Nutzen / Aufwand / Risiko / Verständlichkeit / Realismus für eine S
 4. Mehr als ~5000 ähnliche Paare werden als „5.000+“ angezeigt (Obergrenze).
 5. Keine direkte Moodle-Anbindung (Web-Service-API) – P2, siehe `FUTURE_MOODLE_INTEGRATION.md`.
 6. Die Hinweise zu Jahreszahlen und Antwortlängen sind Heuristiken (nur „Information“).
-7. Frontend: die Fragenseite (`/frage/:id`) wurde automatisiert nur über Typprüfung/Build und im Backend per Test abgedeckt, nicht per Screenshot-Durchlauf.
+7. Die Frage-Detailseite wurde im Browser nur einmal stichprobenartig geöffnet (ohne Konsolenfehler), nicht systematisch über alle Zustände (z. B. Widerspruch-Variante) getestet.
 
 ## 5. P2 (nur dokumentiert)
 * Semantische Ähnlichkeit (Embeddings) mit Lehrenden-Freigabe, weil Fragetexte an externe Dienste gehen würden.
