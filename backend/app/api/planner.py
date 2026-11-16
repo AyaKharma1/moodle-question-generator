@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.exam_planner.service import MAX_STUDENTS, Slot, build_plan, distribution_csv
+from app.exam_planner.service import MAX_STUDENTS, Slot, allocate_percent, build_plan, distribution_csv
 from app.models import User
 from app.security.deps import get_current_user
 
@@ -19,7 +19,8 @@ router = APIRouter(prefix="/api/planner", tags=["test planner"])
 class SlotIn(BaseModel):
     fach: str | None = Field(default=None, max_length=255)
     category: str = Field(min_length=1, max_length=1000)
-    count: int = Field(ge=1, le=50)
+    count: int | None = Field(default=None, ge=1, le=50)
+    percent: float | None = Field(default=None, gt=0, le=100)
 
 
 class PlanIn(BaseModel):
@@ -27,9 +28,27 @@ class PlanIn(BaseModel):
     students: int = Field(default=100, ge=1, le=MAX_STUDENTS)
     seed: int | None = Field(default=None, ge=1, lt=2**31)
     only_unused: bool = False
+    total: int | None = Field(default=None, ge=1, le=100, description="Fragen pro Person im Prozentmodus")
 
     def to_slots(self) -> list[Slot]:
-        slots = [Slot(s.fach, s.category, s.count) for s in self.slots]
+        by_percent = [s.percent is not None for s in self.slots]
+        if any(by_percent):
+            if not all(by_percent) or any(s.count is not None for s in self.slots):
+                raise HTTPException(status_code=422, detail="Bitte entweder überall Prozent oder überall Anzahl angeben.")
+            if self.total is None:
+                raise HTTPException(status_code=422, detail="Für die Prozentverteilung fehlt die Gesamtzahl der Fragen pro Person.")
+            if abs(sum(s.percent for s in self.slots) - 100) > 0.01:
+                raise HTTPException(status_code=422, detail="Die Prozentwerte müssen zusammen 100 ergeben.")
+            if self.total < len(self.slots):
+                raise HTTPException(status_code=422, detail="Die Gesamtzahl ist kleiner als die Zahl der Kategorien.")
+            counts = allocate_percent([s.percent for s in self.slots], self.total)
+            if 0 in counts:
+                raise HTTPException(status_code=422, detail="Bei dieser Gesamtzahl bekäme eine Kategorie 0 Fragen. Bitte Gesamtzahl oder Prozente anpassen.")
+        else:
+            if any(s.count is None for s in self.slots):
+                raise HTTPException(status_code=422, detail="Bitte für jede Kategorie die Anzahl oder den Prozentwert angeben.")
+            counts = [s.count for s in self.slots]
+        slots = [Slot(s.fach, s.category, c) for s, c in zip(self.slots, counts)]
         if len(set((s.fach, s.category) for s in slots)) != len(slots):
             raise HTTPException(status_code=422, detail="Jede Kategorie darf nur einmal im Plan vorkommen.")
         return slots

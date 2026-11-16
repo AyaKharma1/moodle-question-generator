@@ -219,3 +219,73 @@ def test_similar_questions_are_thinned_out_without_overshooting(auth_client):
     assert [r["name"] for r in b["removed"]] == ["u"] and b["removed"][0]["reason"].startswith("Zu ähnlich zu")
     kept = {p["name"] for s in plan["slots"] for p in s["pool"]}
     assert not ({"u", "v"} <= kept or {"u", "w"} <= kept)                      # no two similar questions together
+
+
+# ---------------- percent distribution and fairness mathematics ----------------
+
+def test_percent_allocation_sums_to_total_and_follows_the_shares():
+    from app.exam_planner.service import allocate_percent
+    assert allocate_percent([40, 25, 20, 15], 20) == [8, 5, 4, 3]
+    assert allocate_percent([40, 25, 20, 15], 10) == [4, 3, 2, 1]          # 4, 2.5, 2, 1.5 -> ties to the earlier one
+    assert allocate_percent([33.34, 33.33, 33.33], 10) == [4, 3, 3]
+    for total in range(1, 60):
+        assert sum(allocate_percent([40, 25, 20, 15], total)) == total
+
+
+def test_fairness_formulas_match_hand_calculation():
+    from app.exam_planner.service import fairness
+    f = fairness([20, 10], [5, 2], students=10)
+    assert f["expected_shared"] == round(25 / 20 + 4 / 10, 2) == 1.65
+    from math import comb, log10
+    assert f["log10_variants"] == round(log10(comb(20, 5) * comb(10, 2)), 2)
+    assert abs(f["expected_identical_pairs"] - 45 / (comb(20, 5) * comb(10, 2))) < 1e-12
+    assert f["max_students_without_overlap"] == 4 and f["disjoint_possible"] is False
+    assert fairness([20, 10], [5, 2], students=4)["disjoint_possible"] is True
+    assert fairness([4], [2], students=100)["identical_unavoidable"] is True      # only 6 papers exist
+    assert abs(fairness([10], [3], 2)["p_no_overlap_pair"] - comb(7, 3) / comb(10, 3)) < 1e-12
+    assert fairness([5], [3], 2)["p_no_overlap_pair"] == 0.0                       # 5 < 2*3: overlap certain
+
+
+def test_formula_agrees_with_a_large_simulation():
+    import random
+    from app.exam_planner.service import draw_papers, fairness, paper_stats
+    pool = list(range(30))
+    papers = draw_papers([pool], [6], 300, random.Random(7), balanced=False)
+    measured = paper_stats(papers, pool)["avg_overlap"]
+    assert abs(measured - fairness([30], [6], 300)["expected_shared"]) < 0.1        # 36/30 = 1.2
+
+
+def _plan_with_seed(client, **kw):
+    body = {"slots": [{"fach": "Computersysteme", "category": "PC-Hardware", "count": 2}], "students": 10, "seed": 5}
+    body.update(kw)
+    return client.post("/api/planner/plan", json=body)
+
+
+def test_plan_exposes_labelled_statements_and_coverage(auth_client):
+    from tests.test_quality import _import, WS24, SS25, DB24
+    _import(auth_client, WS24, SS25, DB24)
+    plan = _plan_with_seed(auth_client).json()
+    kinds = {s["kind"] for s in plan["statements"]}
+    assert kinds == {"calculated", "simulated", "not_guaranteed"}
+    assert "Startwert 5" in " ".join(s["text"] for s in plan["statements"] if s["kind"] == "simulated")
+    slot = plan["slots"][0]
+    assert slot["recommended_min"] == 8 and slot["missing_for_recommended"] == max(0, 8 - slot["pool_size"])
+    assert 0 <= slot["coverage_percent"] <= 100
+    hist = plan["random"]["overlap_histogram"]
+    assert sum(h["pairs"] for h in hist) == plan["random"]["pairs_compared"] == 45
+    assert plan == _plan_with_seed(auth_client).json()                                         # same seed, same result
+
+
+def test_plan_by_percent_validates_input(auth_client):
+    from tests.test_quality import _import, WS24, SS25, DB24
+    _import(auth_client, WS24, SS25, DB24)
+    two = [{"fach": "Computersysteme", "category": "PC-Hardware", "percent": 60},
+           {"fach": "Datenbanken", "category": "SQL", "percent": 40}]
+    ok = auth_client.post("/api/planner/plan", json={"slots": two, "total": 5, "students": 5, "seed": 1})
+    assert ok.status_code == 200 and [s["count"] for s in ok.json()["slots"]] == [3, 2]
+    bad_sum = [dict(two[0], percent=50), two[1]]
+    assert auth_client.post("/api/planner/plan", json={"slots": bad_sum, "total": 5}).status_code == 422
+    assert auth_client.post("/api/planner/plan", json={"slots": two}).status_code == 422                 # total missing
+    assert auth_client.post("/api/planner/plan", json={"slots": [dict(two[0], count=2), two[1]], "total": 5}).status_code == 422
+    assert auth_client.post("/api/planner/plan", json={"slots": [dict(two[0], percent=95), dict(two[1], percent=5)], "total": 5}).status_code == 422  # 5 % of 5 = 0 questions
+    assert auth_client.post("/api/planner/plan", json={"slots": [{"category": "X"}]}).status_code == 422
