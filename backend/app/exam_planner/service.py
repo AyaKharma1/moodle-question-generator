@@ -349,8 +349,8 @@ def statements(plan: dict, students: int) -> list[dict]:
             f"{students} × Fragenzahl Fragen), werden aber von Moodle nicht automatisch erzeugt."})
     else:
         out.append({"kind": "calculated", "text":
-            f"Völlig verschiedene Fragen für alle {students} Studierende sind rechnerisch nicht möglich: "
-            f"höchstens {f['max_students_without_overlap']} Studierende könnten überschneidungsfrei geprüft werden."})
+            f"Völlig verschiedene Fragen für alle {students} Studierenden sind rechnerisch nicht möglich: "
+            f"Überschneidungsfrei wären höchstens {f['max_students_without_overlap']} Person(en)."})
     if f["identical_unavoidable"]:
         out.append({"kind": "calculated", "text":
             "Es gibt weniger mögliche Prüfungen als Studierende: identische Prüfungen sind unvermeidbar."})
@@ -363,7 +363,7 @@ def statements(plan: dict, students: int) -> list[dict]:
         f"{b['max_overlap']}; {b['students_with_identical_paper']} Studierende mit identischer Prüfung; jede Frage "
         f"{b['usage_min']}–{b['usage_max']}-mal verwendet."})
     out.append({"kind": "not_guaranteed", "text":
-        "Nicht garantierbar: Moodle zieht Fragen erst beim Start des Tests. Ob zwei bestimmte Personen sich überschneiden, "
+        "Moodle zieht Fragen erst beim Start des Tests. Ob zwei bestimmte Personen sich überschneiden, "
         "ist Zufall. Nur die feste Verteilung (CSV) legt Prüfungen vorab fest, und auch dann bleiben Überschneidungen, "
         "sobald der Pool kleiner als Studierende × Fragenzahl ist."})
     out.append({"kind": "not_guaranteed", "text":

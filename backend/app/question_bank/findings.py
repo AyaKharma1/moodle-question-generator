@@ -156,7 +156,7 @@ def extra_checks(q: Question, current_year: int) -> list[tuple[str, str]]:
         if right and wrong:
             median_wrong = statistics.median(wrong)
             longest_right = max(right)
-            if median_wrong > 0 and longest_right >= 30 and longest_right >= 2 * median_wrong and longest_right == max(lengths):
+            if median_wrong > 0 and longest_right >= 60 and longest_right >= 3 * median_wrong and longest_right == max(lengths):
                 found.append(("answer_length_outlier",
                               f"Die richtige Antwort hat {longest_right} Zeichen, die falschen im Mittel {median_wrong:g}."))
 
