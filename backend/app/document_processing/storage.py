@@ -44,15 +44,15 @@ def _sanitize_original(name: str) -> str:
 
 def save_upload(data: bytes, filename: str, settings: Settings) -> StoredFile:
     if not data:
-        raise StorageError("Uploaded file is empty.")
+        raise StorageError("Die hochgeladene Datei ist leer.")
     if len(data) > settings.max_upload_bytes:
         mb = settings.max_upload_bytes / (1024 * 1024)
-        raise StorageError(f"File exceeds the maximum upload size of {mb:.0f} MB.")
+        raise StorageError(f"Die Datei ist größer als die erlaubten {mb:.0f} MB.")
 
     ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
     if ext not in settings.allowed_extensions:
         allowed = ", ".join(sorted(settings.allowed_extensions))
-        raise StorageError(f"File type {ext or '(none)'} not allowed. Allowed: {allowed}")
+        raise StorageError(f"Dateityp {ext or '(keiner)'} ist nicht erlaubt. Erlaubt: {allowed}")
 
     upload_dir = Path(settings.upload_dir).resolve()
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -62,7 +62,7 @@ def save_upload(data: bytes, filename: str, settings: Settings) -> StoredFile:
 
     # Final guard: the resolved destination must stay within upload_dir.
     if upload_dir not in dest.parents:
-        raise StorageError("Resolved upload path escaped the upload directory.")
+        raise StorageError("Der Speicherpfad liegt außerhalb des Upload-Ordners.")
 
     dest.write_bytes(data)
 

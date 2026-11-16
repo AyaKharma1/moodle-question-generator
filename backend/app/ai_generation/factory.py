@@ -17,4 +17,4 @@ def get_provider(settings: Settings) -> AIProvider:
         from app.ai_generation.openai_provider import OpenAIProvider
 
         return OpenAIProvider(settings)
-    raise AIProviderError(f"Unknown AI_PROVIDER: {provider!r}")
+    raise AIProviderError(f"Unbekannter KI-Anbieter: {provider!r}")

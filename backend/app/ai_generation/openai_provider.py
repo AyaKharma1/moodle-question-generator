@@ -29,7 +29,7 @@ class OpenAIProvider(AIProvider):
 
     def __init__(self, settings: Settings) -> None:
         if not settings.ai_api_key:
-            raise AIProviderError("AI_API_KEY is not configured for the openai provider.")
+            raise AIProviderError("Für den KI-Anbieter „openai“ ist kein API-Schlüssel eingerichtet.")
         self._api_key = settings.ai_api_key
         self._model = settings.ai_model
         self._base_url = settings.ai_base_url.rstrip("/")
@@ -56,16 +56,16 @@ class OpenAIProvider(AIProvider):
             content = resp.json()["choices"][0]["message"]["content"]
         except httpx.HTTPError as exc:
             # Never leak the key or raw vendor payloads to the caller.
-            raise AIProviderError(f"AI request failed: {type(exc).__name__}") from exc
+            raise AIProviderError(f"Die KI-Anfrage ist fehlgeschlagen ({type(exc).__name__}).") from exc
         except (KeyError, IndexError, ValueError) as exc:
-            raise AIProviderError("AI response had an unexpected shape.") from exc
+            raise AIProviderError("Die KI-Antwort hat ein unerwartetes Format.") from exc
 
         try:
             data = json.loads(content)
         except json.JSONDecodeError as exc:
-            raise AIProviderError("AI did not return valid JSON.") from exc
+            raise AIProviderError("Die KI hat kein gültiges JSON geliefert.") from exc
 
         questions = data.get("questions") if isinstance(data, dict) else None
         if not isinstance(questions, list):
-            raise AIProviderError("AI JSON did not contain a 'questions' list.")
+            raise AIProviderError("Die KI-Antwort enthält keine Liste „questions“.")
         return questions

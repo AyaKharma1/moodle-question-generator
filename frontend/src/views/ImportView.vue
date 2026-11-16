@@ -82,9 +82,12 @@ function kb(n: number) {
   </div>
 
   <div class="card">
-    <div v-if="error" class="notice error">{{ error }}</div>
+    <div v-if="error" class="notice error" role="alert">{{ error }}</div>
 
-    <div class="dropzone" :class="{ over }" @click="input?.click()"
+    <div class="dropzone" :class="{ over }" role="button" tabindex="0"
+         aria-label="Moodle-XML-Dateien auswählen oder hierher ziehen"
+         @keydown.enter.prevent="input?.click()" @keydown.space.prevent="input?.click()"
+         @click="input?.click()"
          @dragover.prevent="over = true" @dragleave="over = false" @drop.prevent="onDrop">
       <div class="icon">📄</div>
       <strong>XML-Dateien hierher ziehen oder klicken</strong>
@@ -122,7 +125,7 @@ function kb(n: number) {
         <span v-if="r.error" class="badge danger">Fehler</span>
         <span v-else class="badge ok">Importiert</span>
       </div>
-      <div v-if="r.error" class="notice error" style="margin: 0">{{ r.error }}</div>
+      <div v-if="r.error" class="notice error" role="alert" style="margin: 0">{{ r.error }}</div>
       <template v-else>
         <div class="chips">
           <span class="chip"><strong>{{ r.total }}</strong> Fragen gelesen</span>

@@ -138,16 +138,16 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
       </div>
     </div>
 
-    <div v-if="error" class="notice error">{{ error }}</div>
+    <div v-if="error" class="notice error" role="alert">{{ error }}</div>
     <div class="row" style="margin-top: 1rem">
       <button :disabled="busy" @click="run"><span v-if="busy" class="spinner" /> Plan berechnen</button>
     </div>
   </div>
 
   <template v-if="plan">
-    <div v-if="stale" class="notice warn">Die Eingaben wurden geändert. Bitte den Plan neu berechnen.</div>
+    <div v-if="stale" class="notice warn" role="status">Die Eingaben wurden geändert. Bitte den Plan neu berechnen.</div>
 
-    <div class="notice" :class="plan.ok ? 'success' : 'error'">
+    <div class="notice" :class="plan.ok ? 'success' : 'error'" role="status">
       <template v-if="plan.ok">
         <strong>Der Plan ist möglich.</strong> Jede Person bekommt {{ plan.per_paper }} Fragen
         aus {{ plan.slots.length }} Kategorie(n). Es gibt {{ formatVariants(plan.variants_log10 ?? 0) }} verschiedene Fragensets.
@@ -156,7 +156,7 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
         <strong>Der Plan funktioniert so nicht:</strong> In mindestens einer Kategorie gibt es nicht genug brauchbare Fragen.
       </template>
     </div>
-    <div v-for="w in plan.warnings" :key="w" class="notice warn">⚠ {{ w }}</div>
+    <div v-for="w in plan.warnings" :key="w" class="notice warn" role="status">⚠ {{ w }}</div>
 
     <div class="card">
       <h2>2 · Fragenpool je Kategorie</h2>

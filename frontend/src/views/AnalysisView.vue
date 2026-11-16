@@ -71,8 +71,8 @@ function bankLink(q: BriefQuestion) {
         Dieselbe Frage steht in verschiedenen Dateien, aber mit <strong>anderen richtigen Antworten</strong>.
         Meist wurde die Frage in einer Datei korrigiert und in der anderen nicht. Bitte in Moodle klären, welche Version gilt.
       </p>
-      <p v-if="trimmed.conflicts" class="notice info">{{ trimmed.conflicts }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
-      <p v-if="!analysis.conflicts.length" class="notice success">Keine Widersprüche gefunden. ✓</p>
+      <p v-if="trimmed.conflicts" class="notice info" role="status">{{ trimmed.conflicts }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
+      <p v-if="!analysis.conflicts.length" class="notice success" role="status">Keine Widersprüche gefunden. ✓</p>
       <div v-for="(g, i) in analysis.conflicts" :key="i" class="card">
         <h3>„{{ g.questions[0].text }}“</h3>
         <div class="compare">
@@ -92,8 +92,8 @@ function bankLink(q: BriefQuestion) {
         Unterschiedlich formuliert, inhaltlich aber fast gleich. Liegen beide in derselben Kategorie, kann eine
         Person in einem Test zweimal fast dieselbe Frage bekommen. Entfernen Sie eine davon in Moodle oder verschieben Sie sie in eine andere Kategorie.
       </p>
-      <p v-if="trimmed.similar" class="notice info">{{ trimmed.similar }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
-      <p v-if="!analysis.similar.length" class="notice success">Keine ähnlichen Fragen gefunden. ✓</p>
+      <p v-if="trimmed.similar" class="notice info" role="status">{{ trimmed.similar }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
+      <p v-if="!analysis.similar.length" class="notice success" role="status">Keine ähnlichen Fragen gefunden. ✓</p>
       <div v-for="p in analysis.similar" :key="p.a.id + '-' + p.b.id" class="card">
         <div class="card-head" style="margin-bottom: 0.5rem">
           <span class="badge violet">{{ Math.round(p.score * 100) }} % gleiche Wörter</span>
@@ -112,8 +112,8 @@ function bankLink(q: BriefQuestion) {
     <!-- broken -->
     <template v-if="tab === 'issues'">
       <p class="muted">Fragen, die in Moodle nicht richtig funktionieren würden.</p>
-      <p v-if="trimmed.issues" class="notice info">{{ trimmed.issues }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
-      <p v-if="!analysis.issues.length" class="notice success">Keine fehlerhaften Fragen gefunden. ✓</p>
+      <p v-if="trimmed.issues" class="notice info" role="status">{{ trimmed.issues }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
+      <p v-if="!analysis.issues.length" class="notice success" role="status">Keine fehlerhaften Fragen gefunden. ✓</p>
       <div v-else class="card"><table class="list">
         <thead><tr><th>Frage</th><th>Problem</th><th>Herkunft</th></tr></thead>
         <tbody>
@@ -135,8 +135,8 @@ function bankLink(q: BriefQuestion) {
         Diese Fragen kommen in mehreren Dateien identisch vor (auch wenn die Antworten anders sortiert sind).
         Das ist <strong>kein Fehler</strong>: Die Fragenbank speichert sie nur einmal, und beim Export entsteht kein Duplikat.
       </p>
-      <p v-if="trimmed.exact" class="notice info">{{ trimmed.exact }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
-      <p v-if="!analysis.exact.length" class="notice success">Keine Frage kommt mehrfach vor.</p>
+      <p v-if="trimmed.exact" class="notice info" role="status">{{ trimmed.exact }} Mit der Fragenbank-Suche und ihren Filtern finden Sie jede einzelne.</p>
+      <p v-if="!analysis.exact.length" class="notice success" role="status">Keine Frage kommt mehrfach vor.</p>
       <div v-else class="card"><table class="list">
         <thead><tr><th>Frage</th><th>Dateien</th></tr></thead>
         <tbody>

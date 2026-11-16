@@ -249,20 +249,87 @@ export class ApiError extends Error {
   }
 }
 
+// Called when the server says the login is no longer valid (token expired).
+let unauthorizedHandler: (() => void) | null = null;
+export function onUnauthorized(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+const FIELD_NAMES: Record<string, string> = {
+  password: "Das Passwort",
+  email: "Die E-Mail-Adresse",
+  full_name: "Der Name",
+  students: "Die Anzahl der Studierenden",
+  count: "„Fragen pro Person“",
+  slots: "Die Kategorien",
+  question_text: "Der Fragetext",
+  explanation: "Die Erklärung",
+  answers: "Die Antworten",
+  filename: "Der Dateiname",
+  question_ids: "Die Auswahl",
+  total: "Die Gesamtzahl der Fragen",
+  percent: "Der Prozentanteil",
+  note: "Die Notiz",
+  category_prefix: "Der Ordnername",
+};
+
+// FastAPI/pydantic reports invalid input as a list of objects. Turn them into
+// sentences a lecturer can act on instead of "[object Object]".
+export function describeDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        const e = item as { type?: string; loc?: unknown[]; msg?: string; ctx?: Record<string, unknown> };
+        const field = [...(e.loc ?? [])].reverse().find((p) => typeof p === "string") as string | undefined;
+        const who = (field && FIELD_NAMES[field]) || (field ? `Das Feld „${field}“` : "Eine Eingabe");
+        switch (e.type) {
+          case "missing": return `${who} fehlt.`;
+          case "string_too_short": return `${who} ist zu kurz (mindestens ${e.ctx?.min_length ?? "?"} Zeichen).`;
+          case "string_too_long": return `${who} ist zu lang (höchstens ${e.ctx?.max_length ?? "?"} Zeichen).`;
+          case "too_short": return `${who} braucht mindestens ${e.ctx?.min_length ?? "einen"} Eintrag.`;
+          case "too_long": return `${who} darf höchstens ${e.ctx?.max_length ?? "?"} Einträge haben.`;
+          case "greater_than_equal": return `${who} ist zu klein (mindestens ${e.ctx?.ge ?? "?"}).`;
+          case "less_than_equal": return `${who} ist zu groß (höchstens ${e.ctx?.le ?? "?"}).`;
+          case "int_parsing":
+          case "int_from_float": return `${who} muss eine ganze Zahl sein.`;
+          case "value_error": return `${who} ist nicht zulässig.`;
+          default: return `${who} ist ungültig.`;
+        }
+      }
+      return fallback;
+    });
+    return [...new Set(parts)].join(" ") || fallback;
+  }
+  return fallback;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(path, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(path, { ...init, headers });
+  } catch {
+    throw new ApiError(0, "Keine Verbindung zum Server. Bitte prüfen, ob die Anwendung noch läuft, und die Seite neu laden.");
+  }
 
   if (res.status === 204) return undefined as T;
   const isJson = res.headers.get("content-type")?.includes("application/json");
   const body = isJson ? await res.json() : await res.text();
 
   if (!res.ok) {
-    const detail = isJson ? (body as any).detail : body;
-    const msg = Array.isArray(detail) ? detail.join("; ") : String(detail ?? res.statusText);
-    throw new ApiError(res.status, msg);
+    const fallback = `Anfrage fehlgeschlagen (Fehler ${res.status}).`;
+    const message = describeDetail(isJson ? (body as any).detail : undefined, fallback);
+    // An expired login must send the user back to the sign-in page. A wrong
+    // password at the sign-in page itself is a normal error, not an expiry.
+    if (res.status === 401 && token && !path.startsWith("/api/auth/login")) {
+      setToken(null);
+      unauthorizedHandler?.();
+    }
+    throw new ApiError(res.status, message);
   }
   return body as T;
 }
@@ -368,7 +435,7 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new ApiError(res.status, (err as any).detail ?? res.statusText);
+      throw new ApiError(res.status, describeDetail((err as any).detail, `Fehler ${res.status}.`));
     }
     return res.blob();
   },
@@ -412,7 +479,7 @@ export const api = {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new ApiError(res.status, (body as any).detail ?? res.statusText);
+      throw new ApiError(res.status, describeDetail((body as any).detail, `Export fehlgeschlagen (Fehler ${res.status}).`));
     }
     return res.blob();
   },

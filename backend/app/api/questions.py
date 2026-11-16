@@ -42,7 +42,7 @@ router = APIRouter(prefix="/api/questions", tags=["questions"])
 def _owned_question(db: Session, qid: int, user: User) -> Question:
     q = db.get(Question, qid)
     if q is None or q.owner_id != user.id:
-        raise HTTPException(status_code=404, detail="Question not found")
+        raise HTTPException(status_code=404, detail="Frage nicht gefunden")
     return q
 
 
@@ -200,7 +200,7 @@ def regenerate_question(
     q = _owned_question(db, qid, current)
     _reject_imported(q)
     if q.document_id is None or q.document is None:
-        raise HTTPException(status_code=409, detail="Question has no source document to regenerate from")
+        raise HTTPException(status_code=409, detail="Diese Frage hat kein Quelldokument, aus dem sie neu erzeugt werden könnte.")
 
     provider = get_provider(settings)
     req = GenerationRequest(
@@ -212,7 +212,7 @@ def regenerate_question(
     )
     outcome = run_generation(provider=provider, source_text=q.document.text_content, request=req)
     if not outcome.reviewed:
-        raise HTTPException(status_code=502, detail="Could not regenerate a question")
+        raise HTTPException(status_code=502, detail="Es konnte keine neue Frage erzeugt werden.")
 
     created = persist_generated(
         db, owner=current, document=q.document, outcome=outcome,

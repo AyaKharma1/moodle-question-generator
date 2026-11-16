@@ -296,8 +296,8 @@ function exportSelected() {
     </div>
   </div>
 
-  <div v-if="error" class="notice error">{{ error }}</div>
-  <div v-if="success" class="notice success">{{ success }}</div>
+  <div v-if="error" class="notice error" role="alert">{{ error }}</div>
+  <div v-if="success" class="notice success" role="status">{{ success }}</div>
 
   <div class="toolbar">
     <span class="muted">

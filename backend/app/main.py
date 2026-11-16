@@ -23,6 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger("app")
 
 settings = get_settings()
+settings.assert_production_safe()
 
 app = FastAPI(
     title=settings.app_name,
@@ -55,6 +56,18 @@ app.include_router(planner.router)
 @app.get("/health", tags=["health"])
 def health() -> dict:
     return {"status": "ok", "ai_provider": settings.ai_provider, "version": __version__}
+
+
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    """Refuse oversized uploads from the Content-Length header, before reading the body."""
+    declared = request.headers.get("content-length")
+    limit = get_settings().max_request_bytes
+    if declared and declared.isdigit() and int(declared) > limit:
+        mb = limit / (1024 * 1024)
+        return JSONResponse(status_code=413, content={
+            "detail": f"Die Anfrage ist zu groß (mehr als {mb:.0f} MB). Bitte weniger oder kleinere Dateien auf einmal hochladen."})
+    return await call_next(request)
 
 
 @app.exception_handler(Exception)

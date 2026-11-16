@@ -60,7 +60,7 @@ onMounted(async () => {
       <span class="button small">Planen →</span>
     </router-link>
 
-    <div v-if="overview.totals.duplicates" class="notice info">
+    <div v-if="overview.totals.duplicates" class="notice info" role="status">
       {{ overview.totals.duplicates }} Frage(n) kommen in mehreren Dateien vor. Sie sind in der Fragenbank
       nur <strong>einmal</strong> gespeichert, die Herkunft aus allen Dateien bleibt erhalten.
     </div>

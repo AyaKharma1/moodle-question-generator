@@ -48,8 +48,8 @@ function kb(n: number) {
   <AiNav />
   <div class="card">
     <p class="muted">Erlaubte Formate: PDF, TXT, DOCX. Maximale Größe: 10 MB.</p>
-    <div v-if="error" class="notice error">{{ error }}</div>
-    <div v-if="success" class="notice success">{{ success }}</div>
+    <div v-if="error" class="notice error" role="alert">{{ error }}</div>
+    <div v-if="success" class="notice success" role="status">{{ success }}</div>
 
     <label for="file">Datei</label>
     <input id="file" type="file" accept=".pdf,.txt,.docx" @change="onPick" />

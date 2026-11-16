@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import ImportFile, Question, QuestionOccurrence, QuestionStatus, User
+from app.document_processing.limits import megabytes, read_limited
 from app.moodle_import import MoodleImportError
 from app.question_bank.search import (
     FLAGS,
@@ -66,16 +67,22 @@ async def import_files(
         raise HTTPException(status_code=400, detail=f"Maximal {MAX_FILES_PER_IMPORT} Dateien pro Import.")
 
     results: list[ImportSummaryOut] = []
+    budget = settings.max_import_total_bytes
     for upload in files:
         filename = os.path.basename(upload.filename or "import.xml")[:255]
-        data = await upload.read()
         if not filename.lower().endswith(".xml"):
             results.append(ImportSummaryOut(filename=filename, error="Nur .xml-Dateien (Moodle-XML) sind erlaubt."))
             continue
-        if len(data) > settings.max_upload_bytes:
-            mb = settings.max_upload_bytes / (1024 * 1024)
-            results.append(ImportSummaryOut(filename=filename, error=f"Datei ist größer als {mb:.0f} MB."))
+        # Never read more than one file's limit, nor more than the import has left.
+        data, too_big = await read_limited(upload, min(settings.max_upload_bytes, budget))
+        if too_big:
+            if budget < settings.max_upload_bytes:
+                reason = f"Die erlaubte Gesamtgröße von {megabytes(settings.max_import_total_bytes)} MB pro Import ist erreicht."
+            else:
+                reason = f"Die Datei ist größer als {megabytes(settings.max_upload_bytes)} MB."
+            results.append(ImportSummaryOut(filename=filename, error=reason + " Bitte in kleinere Exporte aufteilen (z. B. nach Kategorie)."))
             continue
+        budget -= len(data)
         try:
             summary = import_moodle_file(db, owner=current, filename=filename, data=data, fach=fach)
         except (MoodleImportError, DuplicateFileError) as exc:

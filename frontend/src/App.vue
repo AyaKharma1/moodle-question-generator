@@ -19,9 +19,10 @@ function onLogout() {
 
 <template>
   <div class="app-shell">
+    <a href="#main" class="skip-link">Zum Inhalt springen</a>
     <header class="topbar" v-if="authState.user">
       <router-link to="/" class="brand"><span class="logo">MF</span> Moodle-Fragenbank</router-link>
-      <nav>
+      <nav aria-label="Hauptnavigation">
         <router-link to="/">Übersicht</router-link>
         <router-link to="/import">Importieren</router-link>
         <router-link to="/bank">Fragenbank</router-link>
@@ -38,7 +39,7 @@ function onLogout() {
       <span class="user">{{ authState.user.email }}</span>
       <button class="secondary small" @click="onLogout">Abmelden</button>
     </header>
-    <main class="content">
+    <main id="main" class="content" tabindex="-1">
       <router-view />
     </main>
   </div>

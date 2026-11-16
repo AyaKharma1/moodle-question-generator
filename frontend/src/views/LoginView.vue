@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { api, ApiError } from "../api";
 import { login } from "../auth";
 
 const router = useRouter();
+const expired = useRoute().query.expired === "1";
 const mode = ref<"login" | "register">("login");
 const email = ref("");
 const password = ref("");
@@ -35,7 +36,10 @@ async function submit() {
       <h1>{{ mode === "login" ? "Anmelden" : "Registrieren" }}</h1>
       <p class="muted">Moodle-Fragenbank: Fragen aus Moodle-Exporten verwalten</p>
 
-      <div v-if="error" class="notice error">{{ error }}</div>
+      <div v-if="expired && !error" class="notice warn" role="status">
+        Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an. Ihre Daten sind unverändert gespeichert.
+      </div>
+      <div v-if="error" class="notice error" role="alert">{{ error }}</div>
 
       <form @submit.prevent="submit">
         <template v-if="mode === 'register'">
