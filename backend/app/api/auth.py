@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     exists = db.scalar(select(User).where(User.email == payload.email))
     if exists:
-        raise HTTPException(status_code=409, detail="Email already registered")
+        raise HTTPException(status_code=409, detail="Diese E-Mail-Adresse ist bereits registriert.")
     user = User(
         email=payload.email,
         hashed_password=hash_password(payload.password),
@@ -42,7 +42,7 @@ def login(
     if user is None or not verify_password(form.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="E-Mail-Adresse oder Passwort ist falsch.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return Token(access_token=create_access_token(user.id, settings))

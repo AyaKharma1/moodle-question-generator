@@ -55,7 +55,7 @@ onMounted(async () => {
         <tbody>
           <template v-for="e in visibleExports" :key="e.id">
             <tr>
-              <td><strong>{{ e.filename }}</strong></td>
+              <td><strong>{{ e.filename }}</strong><div v-if="e.note" class="muted">{{ e.note }}</div></td>
               <td>{{ e.question_count }}</td>
               <td class="muted">{{ formatDate(e.created_at) }}</td>
               <td style="text-align: right">
@@ -66,6 +66,10 @@ onMounted(async () => {
             </tr>
             <tr v-if="open === e.id">
               <td colspan="4">
+                <p v-if="e.summary" class="muted" style="margin-top: 0">
+                  Zum Exportzeitpunkt offen: {{ e.summary.warnings.counts.critical }} kritisch, {{ e.summary.warnings.counts.review }} überprüfen, {{ e.summary.warnings.counts.info }} Information.
+                  Kategorien: {{ e.summary.categories.map((c) => `${c.path} (${c.count})`).join(", ") }}.
+                </p>
                 <div class="chips">
                   <span v-for="(name, i) in e.question_names" :key="i" class="chip">{{ name }}</span>
                 </div>

@@ -118,6 +118,14 @@ class Question(Base):
     # ``question_bank.search.build_search_text``.
     search_text: Mapped[str | None] = mapped_column(Text)
 
+    # The lecturer's own decision about a finding. Never set by the app itself:
+    #   None / "open"  nothing decided yet
+    #   "reviewed"     looked at and accepted as it is
+    #   "excluded"     not to be used in tests or exports (stays in the bank)
+    decision: Mapped[str | None] = mapped_column(String(16), index=True)
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -198,6 +206,10 @@ class ExportHistory(Base):
     question_count: Mapped[int] = mapped_column(Integer, nullable=False)
     question_ids: Mapped[list] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # What the lecturer wrote ("Klausur WS 25/26") and what the export contained
+    # at that moment (categories, open warnings), so the history stays traceable.
+    note: Mapped[str | None] = mapped_column(String(500))
+    summary: Mapped[dict | None] = mapped_column(JSON)
 
 
 class ImportFile(Base):
@@ -214,6 +226,7 @@ class ImportFile(Base):
     question_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     new_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    report: Mapped[dict | None] = mapped_column(JSON)     # see moodle_import.report
 
     occurrences: Mapped[list["QuestionOccurrence"]] = relationship(
         back_populates="import_file", cascade="all, delete-orphan"

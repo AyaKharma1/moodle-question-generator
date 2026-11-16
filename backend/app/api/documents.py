@@ -14,6 +14,7 @@ from app.document_processing import (
     extract_text,
     save_upload,
 )
+from app.document_processing.limits import megabytes, read_limited
 from app.models import Document, User
 from app.schemas.api import DocumentOut
 from app.security.deps import get_current_user
@@ -26,7 +27,7 @@ def _owned_document(db: Session, doc_id: int, user: User) -> Document:
     doc = db.get(Document, doc_id)
     # 404 (not 403) for other users' rows so existence is not leaked.
     if doc is None or doc.owner_id != user.id:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
     return doc
 
 
@@ -37,7 +38,12 @@ async def upload_document(
     settings: Settings = Depends(get_settings),
     current: User = Depends(get_current_user),
 ) -> Document:
-    data = await file.read()
+    data, too_big = await read_limited(file, settings.max_upload_bytes)
+    if too_big:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Die Datei ist größer als die erlaubten {megabytes(settings.max_upload_bytes)} MB.",
+        )
     try:
         stored = save_upload(data, file.filename or "upload", settings)
         text = extract_text(data, file.filename or "upload")

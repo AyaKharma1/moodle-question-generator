@@ -80,7 +80,7 @@ async function remove(q: Question) {
     Freigegebene Fragen exportieren Sie in der <router-link to="/bank?source=ai">Fragenbank</router-link>.
   </p>
 
-  <div v-if="error" class="notice error">{{ error }}</div>
+  <div v-if="error" class="notice error" role="alert">{{ error }}</div>
   <div v-if="loading" class="muted">Lädt…</div>
   <p v-else-if="questions.length === 0" class="muted">
     Keine Fragen vorhanden. <router-link to="/generate">Jetzt generieren →</router-link>

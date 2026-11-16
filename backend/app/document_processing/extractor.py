@@ -44,16 +44,16 @@ def detect_kind(data: bytes, filename: str) -> str:
             with zipfile.ZipFile(io.BytesIO(data)) as zf:
                 names = zf.namelist()
         except zipfile.BadZipFile as exc:
-            raise ExtractionError("File looks like a zip but is corrupted.") from exc
+            raise ExtractionError("Die Datei sieht aus wie ein ZIP-Archiv, ist aber beschädigt.") from exc
         if "word/document.xml" not in names:
-            raise ExtractionError("Zip file is not a Word (.docx) document.")
+            raise ExtractionError("Das ZIP-Archiv ist kein Word-Dokument (.docx).")
         kind = "docx"
     else:
         # Fall back to text only if it decodes as UTF-8/Latin-1 cleanly.
         if _looks_like_text(data):
             kind = "txt"
         else:
-            raise ExtractionError("Unsupported or unrecognized file format.")
+            raise ExtractionError("Dateiformat nicht unterstützt oder nicht erkannt.")
 
     # Cross-check: extension must match detected kind (defense in depth).
     expected_ext = {"pdf": ".pdf", "docx": ".docx", "txt": ".txt"}[kind]
@@ -101,23 +101,23 @@ def _extract_pdf(data: bytes) -> str:
         if reader.is_encrypted:
             # Attempt empty-password decryption; refuse otherwise.
             if reader.decrypt("") == 0:
-                raise ExtractionError("Encrypted PDFs are not supported.")
+                raise ExtractionError("Verschlüsselte PDF-Dateien werden nicht unterstützt.")
         parts = [(page.extract_text() or "") for page in reader.pages]
     except ExtractionError:
         raise
     except (PyPdfError, Exception) as exc:  # noqa: BLE001 - pypdf raises many types
-        raise ExtractionError("The PDF file is corrupted or unreadable.") from exc
+        raise ExtractionError("Die PDF-Datei ist beschädigt oder nicht lesbar.") from exc
     return "\n".join(parts)
 
 
 def _extract_docx(data: bytes) -> str:
     if docx is None:  # pragma: no cover
-        raise ExtractionError("DOCX support is not available on the server.")
+        raise ExtractionError("DOCX wird auf diesem Server nicht unterstützt.")
     try:
         document = docx.Document(io.BytesIO(data))
         parts = [p.text for p in document.paragraphs]
     except Exception as exc:  # noqa: BLE001
-        raise ExtractionError("The DOCX file is corrupted or unreadable.") from exc
+        raise ExtractionError("Die DOCX-Datei ist beschädigt oder nicht lesbar.") from exc
     return "\n".join(parts)
 
 
@@ -127,4 +127,4 @@ def _extract_txt(data: bytes) -> str:
             return data.decode(enc)
         except UnicodeDecodeError:
             continue
-    raise ExtractionError("The text file is not valid UTF-8 or Latin-1.")
+    raise ExtractionError("Die Textdatei ist weder gültiges UTF-8 noch Latin-1.")

@@ -31,8 +31,10 @@ from app.models import (
     User,
 )
 from app.question_bank.search import build_search_text
+from app.moodle_import.report import build_report
 from app.moodle_import import (
     NO_CATEGORY,
+    MoodleImportError,
     ParsedQuestion,
     missing_files_in_xml,
     normalize,
@@ -65,6 +67,7 @@ class ImportSummary:
     existing: int = 0
     conflicts: int = 0
     categories: list[str] = field(default_factory=list)
+    report: dict | None = None
 
 
 def _filename_stem(filename: str) -> str:
@@ -115,6 +118,11 @@ def import_moodle_file(db: Session, *, owner: User, filename: str,
         )
 
     parsed_questions = parse_moodle_xml(data)
+    if not parsed_questions:
+        raise MoodleImportError(
+            "Die Datei enthält keine Fragen (nur Kategorien oder leer). "
+            "Bitte beim Export in Moodle eine Kategorie mit Fragen wählen."
+        )
     fach = (fach or "").strip() or None
 
     import_file = ImportFile(
@@ -157,6 +165,7 @@ def import_moodle_file(db: Session, *, owner: User, filename: str,
 
     import_file.question_count = summary.total
     import_file.new_count = summary.new
+    summary.report = import_file.report = build_report(parsed_questions)
     summary.categories = categories
     db.flush()
     return summary
@@ -228,8 +237,18 @@ def overview(db: Session, owner: User) -> dict:
     for q in questions:
         tree[q.fach or "Ohne Fach"][q.category or NO_CATEGORY] += 1
 
+    from app.question_bank import findings as fx          # findings builds on this module
     analysis = analysis_cached(db, owner)
+    decisions = fx.decisions_of(db, owner)
+    quality = fx.summarize(fx.with_state(findings_cached(db, owner), decisions))
     return {
+        "quality": {
+            "open": quality["open"], "done": quality["done"],
+            "reviewed": sum(1 for d in decisions.values() if d["state"] == "reviewed"),
+            "excluded": sum(1 for d in decisions.values() if d["state"] == "excluded"),
+            "open_conflicts": sum(1 for g in analysis["conflicts"]
+                                  if not fx.group_resolved([q["id"] for q in g["questions"]], decisions)),
+        },
         "totals": {
             "questions": len(questions),
             "files": len(files),
@@ -303,26 +322,27 @@ def similar_pairs(questions: list[Question], limit: int = MAX_SIMILAR_PAIRS) -> 
     return pairs
 
 
-def _issues(q: Question) -> list[str]:
-    problems: list[str] = []
+def _issues(q: Question) -> list[tuple[str, str]]:
+    """Technical problems as ``(code, text)``; the codes are defined in ``findings``."""
+    problems: list[tuple[str, str]] = []
     if not plain_text(q.question_text) and "<img" not in (q.question_text or ""):
-        problems.append("Fragetext ist leer.")
+        problems.append(("empty_text", "Fragetext ist leer."))
     graded = (q.moodle_type or q.question_type) in _GRADED_TYPES
     if graded and q.answers and not any(a.is_correct for a in q.answers):
-        problems.append("Keine richtige Antwort markiert.")
+        problems.append(("no_correct_answer", "Keine richtige Antwort markiert."))
     if q.question_type == "multiple_choice" and q.answers and all(a.is_correct for a in q.answers) \
             and len(q.answers) > 1:
-        problems.append("Alle Antworten sind als richtig markiert.")
+        problems.append(("all_correct", "Alle Antworten sind als richtig markiert."))
     seen: set[str] = set()
     for a in q.answers:
         key = normalize(a.text)
         if key and key in seen:
-            problems.append(f"Antwort „{plain_text(a.text)}“ kommt doppelt vor.")
+            problems.append(("duplicate_answer", f"Antwort „{plain_text(a.text)}“ kommt doppelt vor."))
             break
         seen.add(key)
     missing = missing_files_in_xml(q.raw_xml) if q.raw_xml else []
     if missing:
-        problems.append("Bild fehlt in der Datei: " + ", ".join(missing))
+        problems.append(("missing_media", "Bild fehlt in der Datei: " + ", ".join(missing)))
     return problems
 
 
@@ -335,12 +355,14 @@ def _issues(q: Question) -> list[str]:
 # import, removal or edit changes it and the next request recomputes.
 
 _cache: dict[int, tuple[tuple, dict]] = {}
+_findings_cache: dict[int, tuple[tuple, list]] = {}
 _cache_lock = threading.Lock()
 
 
 def clear_analysis_cache() -> None:
     with _cache_lock:
         _cache.clear()
+        _findings_cache.clear()
 
 
 def bank_version(db: Session, owner: User) -> tuple:
@@ -377,6 +399,25 @@ def analysis_cached(db: Session, owner: User) -> dict:
     return result
 
 
+def findings_cached(db: Session, owner: User) -> list[dict]:
+    """All quality findings of the bank, recomputed only after a change.
+
+    The lecturer's decisions are *not* part of this: they are applied on top
+    with ``findings.with_state`` because they change more often than the questions.
+    """
+    from app.question_bank.findings import build_findings   # findings builds on this module
+
+    version = bank_version(db, owner)
+    with _cache_lock:
+        hit = _findings_cache.get(owner.id)
+        if hit and hit[0] == version:
+            return hit[1]
+    result = build_findings(_bank_questions(db, owner), analysis_cached(db, owner))
+    with _cache_lock:
+        _findings_cache[owner.id] = (version, result)
+    return result
+
+
 def analysis_counts(analysis: dict) -> dict:
     return {key: len(items) for key, items in analysis.items()}
 
@@ -388,22 +429,6 @@ def trimmed_analysis(analysis: dict, limit: int) -> dict:
             "counts": counts, "limit": limit,
             # the similar-question search stops at MAX_SIMILAR_PAIRS, so that count is a lower bound
             "similar_capped": counts["similar"] >= MAX_SIMILAR_PAIRS}
-
-
-def flag_map(analysis: dict) -> dict[int, list[dict]]:
-    """question id -> short hints to show next to the question."""
-    flags: dict[int, list[dict]] = defaultdict(list)
-    for e in analysis["exact"]:
-        flags[e["question"]["id"]].append({"label": f"in {e['count']} Dateien", "kind": "info"})
-    for g in analysis["conflicts"]:
-        for q in g["questions"]:
-            flags[q["id"]].append({"label": "Widerspruch", "kind": "danger"})
-    for p in analysis["similar"]:
-        for q in (p["a"], p["b"]):
-            flags[q["id"]].append({"label": "ähnliche Frage", "kind": "violet"})
-    for i in analysis["issues"]:
-        flags[i["question"]["id"]].append({"label": i["problems"][0], "kind": "warn"})
-    return flags
 
 
 def check_selection(analysis: dict, ids: set[int]) -> dict:
@@ -447,8 +472,8 @@ def analyse(db: Session, owner: User, *, questions: list[Question] | None = None
 
     # 4. Broken questions.
     issues = [
-        {"question": brief(q), "problems": problems}
-        for q in questions if (problems := _issues(q))
+        {"question": brief(q), "problems": [text for _, text in found], "codes": [code for code, _ in found]}
+        for q in questions if (found := _issues(q))
     ]
 
     return {"exact": exact, "conflicts": conflicts, "similar": similar, "issues": issues}

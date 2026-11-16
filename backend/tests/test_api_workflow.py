@@ -66,7 +66,8 @@ def test_oversized_upload_rejected(auth_client):
         "/api/documents",
         files={"file": ("big.txt", io.BytesIO(big), "text/plain")},
     )
-    assert r.status_code == 400
+    assert r.status_code == 413
+    assert "10 MB" in r.json()["detail"]
 
 
 # ---------------- cross-user authorization ----------------

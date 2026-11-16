@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Question, QuestionStatus, User
+from app.question_bank import findings as fx
 from app.question_bank.service import analysis_cached, export_map, similar_pairs
 
 MAX_STUDENTS = 2000
@@ -55,6 +56,48 @@ class Slot:
 def de(number: float) -> str:
     """German decimal comma for texts shown to the user."""
     return str(number).replace(".", ",")
+
+
+def allocate_percent(percents: list[float], total: int) -> list[int]:
+    """Turn percentages into whole question counts that add up to ``total``
+    (largest-remainder method: round down, then give the leftovers to the
+    biggest fractional parts; ties go to the earlier category)."""
+    raw = [p * total / 100 for p in percents]
+    counts = [math.floor(x + 1e-9) for x in raw]
+    order = sorted(range(len(raw)), key=lambda i: (-(raw[i] - counts[i]), i))
+    for i in order[: total - sum(counts)]:
+        counts[i] += 1
+    return counts
+
+
+def fairness(sizes: list[int], counts: list[int], students: int) -> dict:
+    """What can be said about repetition *mathematically*, before any simulation.
+
+    Assumption for every number here: each student gets ``k`` questions drawn
+    uniformly at random without replacement from the ``n`` of a category, drawn
+    independently per student and per category (this is how Moodle's random
+    question works). Nothing here is a promise about a concrete paper.
+    """
+    expected_shared = sum(k * k / n for n, k in zip(sizes, counts))
+    log10_variants = sum(math.log10(math.comb(n, k)) for n, k in zip(sizes, counts))
+    pairs = students * (students - 1) / 2
+    log10_pairs = math.log10(pairs) if pairs else None
+    # P(two given students hold exactly the same paper) = 1 / variants
+    expected_identical_pairs = 0.0 if log10_pairs is None or log10_pairs - log10_variants < -300 \
+        else 10 ** (log10_pairs - log10_variants)
+    p_no_overlap = 1.0
+    for n, k in zip(sizes, counts):
+        p_no_overlap *= math.comb(n - k, k) / math.comb(n, k) if n >= 2 * k else 0.0
+    return {
+        "expected_shared": round(expected_shared, 2),
+        "log10_variants": round(log10_variants, 2),
+        "expected_identical_pairs": expected_identical_pairs,
+        "p_no_overlap_pair": p_no_overlap,
+        # a completely overlap-free distribution for ALL students needs n >= students * k in every category
+        "max_students_without_overlap": min(n // k for n, k in zip(sizes, counts)),
+        "disjoint_possible": all(n >= students * k for n, k in zip(sizes, counts)),
+        "identical_unavoidable": log10_variants < math.log10(students) if students > 0 else False,
+    }
 
 
 def level_for(pool: int, per_student: int) -> str:
@@ -127,7 +170,11 @@ def paper_stats(papers: list[tuple[int, ...]], all_ids: list[int]) -> dict:
                 for i in range(len(masks)) for j in range(i + 1, len(masks))]
     papers_seen = Counter(papers)
     usage = Counter(q for p in papers for q in p)
+    histogram = Counter(overlaps)
     return {
+        "pairs_compared": len(overlaps),
+        "students_compared": len(sample),
+        "overlap_histogram": [{"shared": k, "pairs": histogram[k]} for k in sorted(histogram)],
         "avg_overlap": round(sum(overlaps) / len(overlaps), 2) if overlaps else 0.0,
         "max_overlap": max(overlaps, default=0),
         "unique_papers": len(papers_seen),
@@ -142,7 +189,12 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
                seed: int | None, only_unused: bool) -> dict:
     seed = seed if seed is not None else random.SystemRandom().randrange(1, 2**31)
     analysis = analysis_cached(db, owner)
-    conflicted = {q["id"] for g in analysis["conflicts"] for q in g["questions"]}
+    decisions = fx.decisions_of(db, owner)
+    # Contradicting variants stay out until the lecturer has decided. After the
+    # decision, excluded variants are gone and kept ones may be used.
+    conflicted = {q["id"] for g in analysis["conflicts"]
+                  if not fx.group_resolved([m["id"] for m in g["questions"]], decisions)
+                  for q in g["questions"]}
     broken = {i["question"]["id"]: i["problems"][0] for i in analysis["issues"]}
     used = set(export_map(db, owner)) if only_unused else set()
 
@@ -159,6 +211,8 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
         for q in candidates:
             if q.question_type in NOT_QUESTIONS:
                 gone[q.id] = "Beschreibung (nur Text, keine bewertbare Frage)"
+            elif q.decision == "excluded":
+                gone[q.id] = "Von Ihnen ausgeschlossen"
             elif q.id in conflicted:
                 gone[q.id] = "Widerspruch: gleicher Text, andere richtige Antwort"
             elif q.id in broken:
@@ -176,7 +230,16 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
     slot_of = {q.id: i for i, pool in enumerate(pools) for q in pool}
     by_id = {q.id: q for q in everyone}
     alive = set(by_id)
-    pairs = sorted(((everyone[i].id, everyone[j].id) for i, j, _s in similar_pairs(everyone, SIMILAR_LIMIT)))
+    pair_set = {(everyone[i].id, everyone[j].id) for i, j, _s in similar_pairs(everyone, SIMILAR_LIMIT)}
+    # Variants with the same wording (kept after a reviewed contradiction) count as
+    # similar too, so one test never contains both.
+    same_text: dict[str, list[int]] = {}
+    for q in everyone:
+        if q.text_fingerprint:
+            same_text.setdefault(q.text_fingerprint, []).append(q.id)
+    for ids in same_text.values():
+        pair_set |= {(a, b) for n, a in enumerate(sorted(ids)) for b in sorted(ids)[n + 1:]}
+    pairs = sorted(pair_set)
     neighbours: dict[int, set[int]] = {}
     for a, b in pairs:
         neighbours.setdefault(a, set()).add(b)
@@ -214,6 +277,8 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
             "enough": enough, "level": level,
             "shared_expected": round(slot.count * slot.count / len(pool), 1) if pool else None,
             "recommended_min": 4 * slot.count,
+            "missing_for_recommended": max(0, 4 * slot.count - len(pool)),
+            "coverage_percent": round(min(100.0, 100 * len(pool) / (4 * slot.count))),
             "removed": [{"id": qid, "name": names[qid], "reason": why} for qid, why in gone.items()],
             "pool": [{"id": q.id, "name": q.name} for q in pool],
         }
@@ -233,6 +298,7 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
         "slots": slot_reports,
         "pool_ids": [q.id for pool in pools for q in pool],
         "warnings": warnings,
+        "fairness": None, "statements": [],
         "variants_log10": None, "random": None, "balanced": None, "sample_papers": [],
     }
     if not result["ok"]:
@@ -253,11 +319,57 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
                                          for qid in paper]}
         for n, paper in enumerate(bal[:5])
     ]
+    result["fairness"] = fairness([len(p) for p in pool_ids], counts, students)
+    result["statements"] = statements(result, students)
     if result["random"]["students_with_identical_paper"]:
         warnings.append(
             f"Bei zufälliger Auswahl (wie in Moodle) bekommen {result['random']['students_with_identical_paper']} "
             f"von {students} Studierenden exakt dieselben Fragen wie eine andere Person.")
     return result
+
+
+def _fmt(x: float) -> str:
+    return de(f"{x:.3g}") if x >= 0.001 or x == 0 else de(f"{x:.1e}")
+
+
+def statements(plan: dict, students: int) -> list[dict]:
+    """Plain-language statements, each labelled with how certain it is:
+    ``calculated`` (formula), ``simulated`` (one run with this seed) or
+    ``not_guaranteed`` (what nobody can promise)."""
+    f, out = plan["fairness"], []
+    out.append({"kind": "calculated", "text":
+        f"Zwei zufällig gezogene Prüfungen teilen im Schnitt {de(f['expected_shared'])} gleiche Fragen "
+        f"(Summe aus k²/n je Kategorie)."})
+    out.append({"kind": "calculated", "text":
+        f"Es gibt rund 10^{de(f['log10_variants'])} verschiedene mögliche Prüfungen. Erwartete Anzahl "
+        f"identischer Paare bei {students} Studierenden und Zufallsziehung: {_fmt(f['expected_identical_pairs'])}."})
+    if f["disjoint_possible"]:
+        out.append({"kind": "calculated", "text":
+            f"Überschneidungsfreie Prüfungen sind rechnerisch möglich (jede Kategorie hat mindestens "
+            f"{students} × Fragenzahl Fragen), werden aber von Moodle nicht automatisch erzeugt."})
+    else:
+        out.append({"kind": "calculated", "text":
+            f"Völlig verschiedene Fragen für alle {students} Studierenden sind rechnerisch nicht möglich: "
+            f"Überschneidungsfrei wären höchstens {f['max_students_without_overlap']} Person(en)."})
+    if f["identical_unavoidable"]:
+        out.append({"kind": "calculated", "text":
+            "Es gibt weniger mögliche Prüfungen als Studierende: identische Prüfungen sind unvermeidbar."})
+    r, b = plan["random"], plan["balanced"]
+    out.append({"kind": "simulated", "text":
+        f"Simulation mit Startwert {plan['seed']} (Zufall wie Moodle): durchschnittlich {de(r['avg_overlap'])} gleiche "
+        f"Fragen je Paar, höchstens {r['max_overlap']}; {r['students_with_identical_paper']} Studierende mit identischer Prüfung."})
+    out.append({"kind": "simulated", "text":
+        f"Simulation feste Verteilung: durchschnittlich {de(b['avg_overlap'])} gleiche Fragen je Paar, höchstens "
+        f"{b['max_overlap']}; {b['students_with_identical_paper']} Studierende mit identischer Prüfung; jede Frage "
+        f"{b['usage_min']}–{b['usage_max']}-mal verwendet."})
+    out.append({"kind": "not_guaranteed", "text":
+        "Moodle zieht Fragen erst beim Start des Tests. Ob zwei bestimmte Personen sich überschneiden, "
+        "ist Zufall. Nur die feste Verteilung (CSV) legt Prüfungen vorab fest, und auch dann bleiben Überschneidungen, "
+        "sobald der Pool kleiner als Studierende × Fragenzahl ist."})
+    out.append({"kind": "not_guaranteed", "text":
+        "Annahmen: gleichverteilte, unabhängige Ziehung ohne Zurücklegen je Kategorie; Ähnlichkeit wird nur über "
+        "gemeinsame Wörter erkannt, nicht über Bedeutung; ähnliche Fragen können unentdeckt bleiben."})
+    return out
 
 
 def distribution_csv(db: Session, owner: User, slots: list[Slot], students: int,

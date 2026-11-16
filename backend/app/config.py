@@ -12,6 +12,9 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEFAULT_SECRET_KEY = "dev-only-insecure-secret-change-me"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -27,7 +30,7 @@ class Settings(BaseSettings):
 
     # --- Security / auth ---
     # MUST be overridden in production via SECRET_KEY env var.
-    secret_key: str = "dev-only-insecure-secret-change-me"
+    secret_key: str = DEFAULT_SECRET_KEY
     access_token_expire_minutes: int = 60
     jwt_algorithm: str = "HS256"
 
@@ -43,7 +46,12 @@ class Settings(BaseSettings):
 
     # --- File uploads ---
     upload_dir: str = "./data/uploads"
-    max_upload_bytes: int = 10 * 1024 * 1024  # 10 MB
+    max_upload_bytes: int = 10 * 1024 * 1024  # 10 MB per file
+    # Upper bound for one whole request (several XML files at once). Larger
+    # requests are refused before the body is read.
+    max_request_bytes: int = 120 * 1024 * 1024
+    # Upper bound for the sum of all files of one import call.
+    max_import_total_bytes: int = 100 * 1024 * 1024
     allowed_extensions: set[str] = Field(
         default_factory=lambda: {".pdf", ".txt", ".docx"}
     )
@@ -60,6 +68,19 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    def assert_production_safe(self) -> None:
+        """Refuse to start in production with a guessable signing key.
+
+        Anyone who knows SECRET_KEY can forge login tokens, so the default
+        value (which is public in this repository) must never be used there.
+        """
+        if self.is_production and (self.secret_key == DEFAULT_SECRET_KEY or len(self.secret_key) < 32):
+            raise RuntimeError(
+                "SECRET_KEY ist für ENVIRONMENT=production nicht sicher genug. Bitte einen "
+                "zufälligen Wert mit mindestens 32 Zeichen setzen: "
+                "python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+            )
 
 
 @lru_cache

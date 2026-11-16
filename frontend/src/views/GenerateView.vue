@@ -66,10 +66,10 @@ async function generate() {
 <template>
   <AiNav />
   <div class="card">
-    <div v-if="error" class="notice error">{{ error }}</div>
-    <div v-if="info" class="notice success">{{ info }}</div>
+    <div v-if="error" class="notice error" role="alert">{{ error }}</div>
+    <div v-if="info" class="notice success" role="status">{{ info }}</div>
 
-    <p v-if="documents.length === 0" class="notice warn">
+    <p v-if="documents.length === 0" class="notice warn" role="status">
       Es gibt noch keine Dokumente. Bitte zuerst <router-link to="/upload">ein Dokument hochladen</router-link>.
     </p>
 

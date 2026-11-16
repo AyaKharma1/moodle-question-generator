@@ -82,9 +82,12 @@ function kb(n: number) {
   </div>
 
   <div class="card">
-    <div v-if="error" class="notice error">{{ error }}</div>
+    <div v-if="error" class="notice error" role="alert">{{ error }}</div>
 
-    <div class="dropzone" :class="{ over }" @click="input?.click()"
+    <div class="dropzone" :class="{ over }" role="button" tabindex="0"
+         aria-label="Moodle-XML-Dateien auswählen oder hierher ziehen"
+         @keydown.enter.prevent="input?.click()" @keydown.space.prevent="input?.click()"
+         @click="input?.click()"
          @dragover.prevent="over = true" @dragleave="over = false" @drop.prevent="onDrop">
       <div class="icon">📄</div>
       <strong>XML-Dateien hierher ziehen oder klicken</strong>
@@ -122,7 +125,7 @@ function kb(n: number) {
         <span v-if="r.error" class="badge danger">Fehler</span>
         <span v-else class="badge ok">Importiert</span>
       </div>
-      <div v-if="r.error" class="notice error" style="margin: 0">{{ r.error }}</div>
+      <div v-if="r.error" class="notice error" role="alert" style="margin: 0">{{ r.error }}</div>
       <template v-else>
         <div class="chips">
           <span class="chip"><strong>{{ r.total }}</strong> Fragen gelesen</span>
@@ -130,10 +133,24 @@ function kb(n: number) {
           <span v-if="r.existing" class="chip"><strong>{{ r.existing }}</strong> schon vorhanden (nicht doppelt gespeichert)</span>
           <span v-if="r.conflicts" class="badge danger">{{ plural(r.conflicts, "Widerspruch", "Widersprüche") }}</span>
         </div>
-        <p class="muted" style="margin: 0.5rem 0 0">Kategorien: {{ r.categories.join(", ") || "–" }}</p>
+        <div v-if="r.report" style="margin-top: 0.6rem">
+          <div class="chips" aria-label="Fragetypen">
+            <span v-for="t in r.report.types" :key="t.type" class="chip"><strong>{{ t.count }}</strong> {{ t.name }}</span>
+            <span v-if="r.report.media.with_files" class="chip">🖼 {{ r.report.media.with_files }} mit Bildern</span>
+          </div>
+          <ul v-if="r.report.warnings.length" style="margin: 0.5rem 0 0; padding-left: 1.1rem">
+            <li v-for="w in r.report.warnings" :key="w.code + w.text">
+              <span class="sev" :class="w.severity">{{ w.severity === "critical" ? "Kritisch" : w.severity === "review" ? "Überprüfen" : "Information" }}</span>
+              {{ w.text }}
+            </li>
+          </ul>
+          <p v-else class="muted" style="margin: 0.5rem 0 0">Beim Lesen sind keine Auffälligkeiten aufgefallen. Das ersetzt keine fachliche Prüfung.</p>
+        </div>
+        <p class="muted" style="margin: 0.5rem 0 0">Kategorien: {{ (r.report?.categories.map((c) => `${c.name} (${c.count})`) ?? r.categories).join(", ") || "–" }}</p>
         <div class="row" style="margin-top: 0.5rem">
           <router-link :to="{ name: 'bank', query: { file: r.file_id } }" class="button secondary small">Fragen ansehen</router-link>
           <router-link v-if="r.conflicts" to="/pruefung" class="button secondary small">Widersprüche prüfen</router-link>
+          <router-link v-else to="/pruefung" class="button secondary small">Qualität prüfen</router-link>
         </div>
       </template>
     </div>

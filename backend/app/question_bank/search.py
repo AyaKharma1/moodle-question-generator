@@ -63,6 +63,7 @@ class BankFilter:
     qtype: str | None = None
     flag: str | None = None          # see FLAGS
     exported: str | None = None      # yes | no
+    decision: str | None = None      # open | reviewed | excluded
     # Resolved lazily by the caller (they need the whole bank):
     flagged_ids: set[int] | None = None
     exported_ids: set[int] | None = None
@@ -104,6 +105,10 @@ def apply_filters(stmt: Select, db: Session, owner: User, f: BankFilter,
         stmt = stmt.where(Question.occurrences.any(QuestionOccurrence.import_file_id == f.import_file_id))
     if f.qtype and skip != "type":
         stmt = stmt.where(Question.question_type == f.qtype)
+    if f.decision == "open":
+        stmt = stmt.where(Question.decision.is_(None))
+    elif f.decision in ("reviewed", "excluded"):
+        stmt = stmt.where(Question.decision == f.decision)
     if f.source == "import":
         stmt = stmt.where(Question.ai_generated.is_(False))
     elif f.source == "ai":
