@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../components/Icon.vue";
 import { onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, ApiError, type QuestionHistory } from "../api";
@@ -121,7 +122,7 @@ const tf = (t: string) => (t === "true" ? "Wahr" : t === "false" ? "Falsch" : t)
           <strong>{{ v.label }}</strong>
           <router-link v-if="v.id !== data.question.id" :to="{ name: 'question', params: { id: v.id } }"> öffnen</router-link>
           <span v-else class="muted"> (diese Frage)</span>
-          <div v-for="o in v.origins" :key="o.filename" class="muted">📄 {{ o.filename }}</div>
+          <div v-for="o in v.origins" :key="o.filename" class="muted"><Icon name="file" /> {{ o.filename }}</div>
           <ul class="answers-list">
             <li v-for="(a, i) in v.answers" :key="i" :class="{ correct: a.is_correct, differs: a.differs }">{{ tf(a.text) }}</li>
           </ul>

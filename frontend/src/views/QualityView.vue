@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import Icon from "../components/Icon.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { api, ApiError, type ConflictGroup, type FindingsPage, type Severity } from "../api";
 import { formatDate, formatNumber } from "../bank";
 
 const SEV_LABEL: Record<Severity, string> = { critical: "Kritisch", review: "Überprüfen", info: "Information" };
-const SEV_ICON: Record<Severity, string> = { critical: "⛔", review: "⚠️", info: "ℹ️" };
 const SEVS: Severity[] = ["critical", "review", "info"];
 
 const page = ref<FindingsPage | null>(null);
@@ -86,7 +86,7 @@ function mark(id: number, name: string | null, decision: "reviewed" | "excluded"
               :aria-pressed="severity === s" style="text-align: left; cursor: pointer"
               @click="severity = severity === s ? '' : s">
         <div class="value">{{ formatNumber(page.summary.open[s]) }}</div>
-        <div class="label">{{ SEV_ICON[s] }} {{ SEV_LABEL[s] }} · offen<span v-if="page.summary.done[s]"> ({{ page.summary.done[s] }} erledigt)</span></div>
+        <div class="label"><Icon :name="s" /> {{ SEV_LABEL[s] }} · offen<span v-if="page.summary.done[s]"> ({{ page.summary.done[s] }} erledigt)</span></div>
       </button>
     </div>
 
@@ -97,7 +97,7 @@ function mark(id: number, name: string | null, decision: "reviewed" | "excluded"
     </div>
 
     <div v-if="!showConflicts && items.length === 0" class="card empty">
-      <div class="icon">✅</div>
+      <div class="icon"><Icon name="check" /></div>
       <h2>{{ state === "open" ? "Nichts Offenes" : "Noch nichts erledigt" }}</h2>
       <p v-if="state === 'open'">Für diese Auswahl liegen keine offenen Hinweise vor. Das ist keine Garantie, dass die Fragen fachlich korrekt sind, nur dass die automatischen Prüfungen nichts gefunden haben.</p>
       <p v-else>Wenn Sie einen Hinweis als „geprüft“ markieren oder eine Frage ausschließen, erscheint er hier.</p>
@@ -105,7 +105,7 @@ function mark(id: number, name: string | null, decision: "reviewed" | "excluded"
 
     <!-- contradictions: variants side by side -->
     <section v-if="showConflicts" aria-labelledby="conf-h">
-      <h2 id="conf-h"><span class="sev critical">⛔ Kritisch</span> Widersprüche: gleiche Frage, andere richtige Antwort</h2>
+      <h2 id="conf-h"><span class="sev critical"><Icon name="critical" /> Kritisch</span> Widersprüche: gleiche Frage, andere richtige Antwort</h2>
       <p class="muted">
         Beide Varianten haben denselben Fragetext, aber unterschiedliche richtige Antworten.
         Gelb umrandet sind die Antworten, die sich unterscheiden. Welche stimmt, kann nur Ihr Fachwissen klären.
@@ -120,7 +120,7 @@ function mark(id: number, name: string | null, decision: "reviewed" | "excluded"
               <span v-else-if="v.decision === 'reviewed'" class="badge ok">bleibt</span>
             </div>
             <div v-for="o in v.origins" :key="o.filename" class="muted">
-              📄 {{ o.filename }} · {{ o.category ?? "–" }} · importiert {{ formatDate(o.imported_at) }}
+              <Icon name="file" /> {{ o.filename }} · {{ o.category ?? "–" }} · importiert {{ formatDate(o.imported_at) }}
             </div>
             <ul class="answers-list">
               <li v-for="(a, i) in v.answers" :key="i" :class="{ correct: a.is_correct, differs: a.differs }">
@@ -149,7 +149,7 @@ function mark(id: number, name: string | null, decision: "reviewed" | "excluded"
       <h2>Weitere Hinweise</h2>
       <div v-for="f in items" :key="f.code + f.question_id" class="card tight">
         <div class="card-head" style="margin-bottom: 0.3rem">
-          <span class="sev" :class="f.severity">{{ SEV_ICON[f.severity] }} {{ SEV_LABEL[f.severity] }}</span>
+          <span class="sev" :class="f.severity"><Icon :name="f.severity" /> {{ SEV_LABEL[f.severity] }}</span>
           <strong>{{ page.catalog[f.code].title }}</strong>
         </div>
         <router-link :to="{ name: 'question', params: { id: f.question_id } }"><strong>{{ f.question.name ?? "Frage " + f.question_id }}</strong></router-link>

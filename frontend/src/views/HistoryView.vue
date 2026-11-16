@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../components/Icon.vue";
 import { computed, onMounted, ref } from "vue";
 import { api, type ExportRecord, type ImportFile } from "../api";
 import { formatDate } from "../bank";
@@ -45,7 +46,7 @@ onMounted(async () => {
     </div>
 
     <div class="card">
-      <h2>⬆ Exportierte Dateien</h2>
+      <h2><Icon name="upload" /> Exportierte Dateien</h2>
       <p v-if="!exports.length" class="muted">
         Noch nichts exportiert. Fragen wählen Sie in der <router-link to="/bank">Fragenbank</router-link> aus.
       </p>
@@ -81,7 +82,7 @@ onMounted(async () => {
     </div>
 
     <div class="card">
-      <h2>📥 Importierte Dateien</h2>
+      <h2><Icon name="inbox" /> Importierte Dateien</h2>
       <p v-if="!imports.length" class="muted">Noch nichts importiert. <router-link to="/import">Jetzt importieren →</router-link></p>
       <p v-else-if="!visibleImports.length" class="muted">Keine importierte Datei passt zur Suche.</p>
       <table v-else class="list">
