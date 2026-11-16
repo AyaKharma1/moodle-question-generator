@@ -220,3 +220,8 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the module breakdown.
   compatibility. Verify with a manual import (guide included).
 - Prompt injection is mitigated, **not** solved. The real safety net is
   structured-output validation plus mandatory human approval.
+
+## Weitere Dokumentation
+* [Änderungen, Entscheidungen und offene Punkte](docs/AENDERUNGEN_UND_ENTSCHEIDUNGEN.md)
+* [Demo-Ablauf](docs/DEMO_ABLAUF.md) (erfundene Demo-Daten, per Knopfdruck ladbar)
+* [Kurz erklärt für Dozierende](docs/ERKLAERUNG_FUER_DOZENTEN.md)
