@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Question, QuestionStatus, User
+from app.question_bank import findings as fx
 from app.question_bank.service import analysis_cached, export_map, similar_pairs
 
 MAX_STUDENTS = 2000
@@ -142,7 +143,12 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
                seed: int | None, only_unused: bool) -> dict:
     seed = seed if seed is not None else random.SystemRandom().randrange(1, 2**31)
     analysis = analysis_cached(db, owner)
-    conflicted = {q["id"] for g in analysis["conflicts"] for q in g["questions"]}
+    decisions = fx.decisions_of(db, owner)
+    # Contradicting variants stay out until the lecturer has decided. After the
+    # decision, excluded variants are gone and kept ones may be used.
+    conflicted = {q["id"] for g in analysis["conflicts"]
+                  if not fx.group_resolved([m["id"] for m in g["questions"]], decisions)
+                  for q in g["questions"]}
     broken = {i["question"]["id"]: i["problems"][0] for i in analysis["issues"]}
     used = set(export_map(db, owner)) if only_unused else set()
 
@@ -159,6 +165,8 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
         for q in candidates:
             if q.question_type in NOT_QUESTIONS:
                 gone[q.id] = "Beschreibung (nur Text, keine bewertbare Frage)"
+            elif q.decision == "excluded":
+                gone[q.id] = "Von Ihnen ausgeschlossen"
             elif q.id in conflicted:
                 gone[q.id] = "Widerspruch: gleicher Text, andere richtige Antwort"
             elif q.id in broken:
@@ -176,7 +184,16 @@ def build_plan(db: Session, owner: User, slots: list[Slot], students: int,
     slot_of = {q.id: i for i, pool in enumerate(pools) for q in pool}
     by_id = {q.id: q for q in everyone}
     alive = set(by_id)
-    pairs = sorted(((everyone[i].id, everyone[j].id) for i, j, _s in similar_pairs(everyone, SIMILAR_LIMIT)))
+    pair_set = {(everyone[i].id, everyone[j].id) for i, j, _s in similar_pairs(everyone, SIMILAR_LIMIT)}
+    # Variants with the same wording (kept after a reviewed contradiction) count as
+    # similar too, so one test never contains both.
+    same_text: dict[str, list[int]] = {}
+    for q in everyone:
+        if q.text_fingerprint:
+            same_text.setdefault(q.text_fingerprint, []).append(q.id)
+    for ids in same_text.values():
+        pair_set |= {(a, b) for n, a in enumerate(sorted(ids)) for b in sorted(ids)[n + 1:]}
+    pairs = sorted(pair_set)
     neighbours: dict[int, set[int]] = {}
     for a, b in pairs:
         neighbours.setdefault(a, set()).add(b)

@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings, get_settings
@@ -16,6 +16,7 @@ from app.database import get_db
 from app.models import ImportFile, Question, QuestionOccurrence, QuestionStatus, User
 from app.document_processing.limits import megabytes, read_limited
 from app.moodle_import import MoodleImportError
+from app.question_bank import findings as fx
 from app.question_bank.search import (
     FLAGS,
     SORTS,
@@ -31,7 +32,7 @@ from app.question_bank.service import (
     analysis_cached,
     check_selection,
     delete_import_file,
-    flag_map,
+    findings_cached,
     trimmed_analysis,
     export_map,
     import_moodle_file,
@@ -163,13 +164,14 @@ def bank_filter(
     type: str | None = Query(default=None, max_length=32),
     flag: str | None = None,
     exported: str | None = Query(default=None, pattern="^(yes|no)$"),
+    decision: str | None = Query(default=None, pattern="^(open|reviewed|excluded)$"),
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> BankFilter:
     if flag is not None and flag not in FLAGS:
         raise HTTPException(status_code=422, detail=f"flag muss einer von {', '.join(FLAGS)} sein")
     f = BankFilter(q=q, fach=fach, category=category, import_file_id=file, source=source,
-                   qtype=type, flag=flag, exported=exported)
+                   qtype=type, flag=flag, exported=exported, decision=decision)
     if flag:
         f.flagged_ids = flagged_question_ids(analysis_cached(db, current), flag)
     if exported:
@@ -200,7 +202,8 @@ def search_questions(
     ).all()
 
     exports = export_map(db, current)
-    flags = flag_map(analysis_cached(db, current)) if rows else {}
+    decisions = fx.decisions_of(db, current) if rows else {}
+    flags = fx.hint_map(findings_cached(db, current), decisions) if rows else {}
     return BankPage(
         items=[QuestionOut.model_validate(r).model_copy(
                    update={"exported_in": exports.get(r.id, []), "flags": flags.get(r.id, [])})
@@ -215,6 +218,7 @@ def selectable_ids(
     f: BankFilter = Depends(bank_filter),
     sort: str = "newest",
     exclude_flagged: bool = False,
+    include_excluded: bool = False,
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> dict:
@@ -229,6 +233,9 @@ def selectable_ids(
     stmt = apply_filters(select(Question.id), db, current, f).where(
         Question.status == QuestionStatus.approved.value
     )
+    if not include_excluded:
+        # questions the lecturer excluded stay in the bank but are never offered for a test or export
+        stmt = stmt.where(or_(Question.decision.is_(None), Question.decision != "excluded"))
     ids = list(db.scalars(order_by(stmt, sort).limit(MAX_SELECTABLE + 1)))
     truncated = len(ids) > MAX_SELECTABLE
     ids = ids[:MAX_SELECTABLE]

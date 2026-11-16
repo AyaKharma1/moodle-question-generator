@@ -71,6 +71,15 @@ def export_xml(
             detail=f"These questions are not approved and cannot be exported: {not_approved}",
         )
 
+    excluded = [r for r in rows if r.decision == "excluded"]
+    if excluded:
+        names = ", ".join(f"„{r.name or r.id}“" for r in excluded[:5]) + (" …" if len(excluded) > 5 else "")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Diese Fragen haben Sie ausgeschlossen und sie werden nicht exportiert: {names}. "
+                   "Zum Exportieren zuerst die Entscheidung auf der Detailseite der Frage zurücknehmen.",
+        )
+
     # Preserve the requested order; a question selected twice is written once.
     by_id = {r.id: r for r in rows}
     ordered = [by_id[qid] for qid in dict.fromkeys(payload.question_ids)]

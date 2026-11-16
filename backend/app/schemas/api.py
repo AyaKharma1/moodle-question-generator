@@ -100,6 +100,8 @@ class QuestionOut(BaseModel):
     origins: list[OriginOut] = []
     exported_in: list[str] = []
     flags: list[dict] = []
+    decision: Optional[str] = None
+    decision_note: Optional[str] = None
 
 
 class GenerateRequest(BaseModel):
@@ -170,3 +172,15 @@ class BankPage(BaseModel):
 
 class SelectionCheckIn(BaseModel):
     ids: list[int] = Field(max_length=5000)
+
+
+class DecisionIn(BaseModel):
+    """The lecturer's decision about one question."""
+    state: str = Field(pattern="^(open|reviewed|excluded)$")
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ConflictDecisionIn(BaseModel):
+    """Which variant of a contradicting question stays; ``keep`` = null keeps all of them."""
+    keep: Optional[int] = None
+    note: Optional[str] = Field(default=None, max_length=1000)
