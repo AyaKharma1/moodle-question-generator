@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../components/Icon.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { api, ApiError, type BankOverview, type PlanResult } from "../api";
 import { downloadBlob, formatNumber, formatVariants, LEVEL_BADGE, LEVEL_TEXT } from "../bank";
@@ -187,13 +188,13 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
         <strong>Der Plan funktioniert so nicht:</strong> In mindestens einer Kategorie gibt es nicht genug brauchbare Fragen.
       </template>
     </div>
-    <div v-for="w in plan.warnings" :key="w" class="notice warn" role="status">⚠ {{ w }}</div>
+    <div v-for="w in plan.warnings" :key="w" class="notice warn" role="status"><Icon name="review" /> {{ w }}</div>
 
     <div class="card">
       <h2>2 · Fragenpool je Kategorie</h2>
       <div v-for="s in plan.slots" :key="s.label" class="card tight">
         <div class="card-head" style="margin-bottom: 0.4rem">
-          <strong>📁 {{ s.label }}</strong>
+          <strong><Icon name="folder" /> {{ s.label }}</strong>
           <span class="badge" :class="LEVEL_BADGE[s.level]">{{ LEVEL_TEXT[s.level] }}</span>
         </div>
         <div class="chips">
@@ -284,8 +285,8 @@ const reasons = computed(() => (plan.value?.slots ?? []).reduce((n, s) => n + s.
         </div>
       </div>
       <div class="row" style="margin-top: 1rem">
-        <button :disabled="busy || stale" @click="downloadPool">⬇ Pool als Moodle-XML</button>
-        <button class="secondary" :disabled="busy || stale" @click="downloadCsv">⬇ Verteilungsplan als CSV</button>
+        <button :disabled="busy || stale" @click="downloadPool"><Icon name="download" /> Pool als Moodle-XML</button>
+        <button class="secondary" :disabled="busy || stale" @click="downloadCsv"><Icon name="download" /> Verteilungsplan als CSV</button>
       </div>
 
       <h3 style="margin-top: 1.25rem">So stellen Sie es in Moodle ein</h3>

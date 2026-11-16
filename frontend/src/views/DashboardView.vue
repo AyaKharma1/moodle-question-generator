@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../components/Icon.vue";
 import { computed, onMounted, ref } from "vue";
 import { api, ApiError, type BankOverview, type ExportRecord, type ImportFile } from "../api";
 import { demoState, refreshDemo } from "../demo";
@@ -61,7 +62,7 @@ const lastExport = computed(() => exports.value[0]);
   <div v-if="error" class="notice error" role="alert">{{ error }}</div>
 
   <div v-else-if="!overview || overview.totals.questions === 0" class="card empty">
-    <div class="icon">📥</div>
+    <div class="icon"><Icon name="inbox" /></div>
     <h2>Noch keine Fragen in der Fragenbank</h2>
     <p>
       Exportieren Sie Ihre Fragensammlung in Moodle als <strong>Moodle-XML</strong> und importieren Sie
@@ -80,13 +81,13 @@ const lastExport = computed(() => exports.value[0]);
       <router-link to="/verlauf" class="stat"><div class="value">{{ overview.totals.files }}</div><div class="label">Importierte Dateien</div></router-link>
       <div class="stat"><div class="value">{{ overview.totals.fachs }}</div><div class="label">Fächer · {{ overview.totals.categories }} Kategorien</div></div>
       <router-link to="/pruefung" class="stat" :class="overview.quality.open.critical ? 'danger' : 'ok'">
-        <div class="value">{{ overview.quality.open.critical }}</div><div class="label">⛔ Kritisch (offen)</div>
+        <div class="value">{{ overview.quality.open.critical }}</div><div class="label"><Icon name="critical" /> Kritisch (offen)</div>
       </router-link>
       <router-link to="/pruefung" class="stat" :class="overview.quality.open.review ? 'warn' : 'ok'">
-        <div class="value">{{ overview.quality.open.review }}</div><div class="label">⚠️ Überprüfen (offen)</div>
+        <div class="value">{{ overview.quality.open.review }}</div><div class="label"><Icon name="review" /> Überprüfen (offen)</div>
       </router-link>
       <router-link to="/pruefung" class="stat">
-        <div class="value">{{ overview.quality.open.info }}</div><div class="label">ℹ️ Information</div>
+        <div class="value">{{ overview.quality.open.info }}</div><div class="label"><Icon name="info" /> Information</div>
       </router-link>
     </div>
 
@@ -112,10 +113,10 @@ const lastExport = computed(() => exports.value[0]);
     </div>
 
     <router-link to="/planer" class="card cta">
-      <span class="icon">🎯</span>
+      <span class="icon"><Icon name="target" /></span>
       <span>
         <strong>Test planen</strong><br />
-        <span class="muted">Fairen Fragenpool bauen: Jede Person bekommt andere Fragen, nichts doppelt oder fast gleich.</span>
+        <span class="muted">Fairen Fragenpool bauen: möglichst wenig Überschneidung zwischen Personen, nichts doppelt oder fast gleich.</span>
       </span>
       <span class="button small">Planen →</span>
     </router-link>
@@ -142,12 +143,12 @@ const lastExport = computed(() => exports.value[0]);
       <div v-for="f in overview.tree" :key="f.fach" class="tree-fach">
         <div class="head">
           <router-link :to="{ name: 'bank', query: { fach: f.fach } }" style="color: inherit; text-decoration: none">
-            📚 {{ f.fach }}
+            <Icon name="book" /> {{ f.fach }}
           </router-link>
           <span class="badge neutral">{{ f.count }} Fragen</span>
         </div>
         <div v-for="c in f.categories" :key="c.name" class="tree-cat">
-          <router-link :to="{ name: 'bank', query: { fach: f.fach, category: c.name } }">📁 {{ c.name }}</router-link>
+          <router-link :to="{ name: 'bank', query: { fach: f.fach, category: c.name } }"><Icon name="folder" /> {{ c.name }}</router-link>
           <span class="muted">{{ c.count }} Fragen</span>
           <span>
             <span class="badge" :class="levelBadge[checkRandomDraw(c.count, perTest).level]">

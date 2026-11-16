@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../components/Icon.vue";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api, ApiError, type BankPage, type BankQuery, type ExportPreview, type FacetValue, type SelectionCheck } from "../api";
@@ -359,7 +360,7 @@ function exportSelected() {
   </div>
 
   <div v-if="!loading && result && result.total === 0" class="card empty">
-    <div class="icon">🔍</div>
+    <div class="icon"><Icon name="search" /></div>
     <p v-if="query.q || activeFilters.length">Keine Fragen für diese Suche. <button class="secondary small" @click="resetFilters">Filter zurücksetzen</button></p>
     <p v-else>Noch keine Fragen. <router-link to="/import">Jetzt Moodle-XML importieren →</router-link></p>
   </div>
@@ -386,10 +387,10 @@ function exportSelected() {
           <template v-for="(seg, i) in highlight(body(q.id), terms)" :key="i"><mark v-if="seg.hit">{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template>
         </div>
         <div class="chips">
-          <span class="chip" v-if="q.fach">📚 <strong>{{ q.fach }}</strong> / {{ q.category }}</span>
-          <span v-for="o in q.origins" :key="o.file_id + (o.category ?? '')" class="chip" :title="o.category ?? ''">📄 {{ o.filename }}</span>
-          <span v-if="!q.origins.length && q.ai_generated" class="chip">🤖 aus Vorlesungsmaterial generiert</span>
-          <span v-for="e in q.exported_in" :key="e" class="chip export">⬆ exportiert in {{ e }}</span>
+          <span class="chip" v-if="q.fach"><Icon name="book" /> <strong>{{ q.fach }}</strong> / {{ q.category }}</span>
+          <span v-for="o in q.origins" :key="o.file_id + (o.category ?? '')" class="chip" :title="o.category ?? ''"><Icon name="file" /> {{ o.filename }}</span>
+          <span v-if="!q.origins.length && q.ai_generated" class="chip"><Icon name="sparkle" /> aus Vorlesungsmaterial generiert</span>
+          <span v-for="e in q.exported_in" :key="e" class="chip export"><Icon name="upload" /> exportiert in {{ e }}</span>
         </div>
         <button v-if="q.answers.length || isLong(q.id)" class="ghost small" style="margin-top: 0.35rem; padding-left: 0" @click="toggleExpanded(q.id)">
           {{ expanded.has(q.id) ? "Weniger anzeigen" : q.answers.length ? `Ganzen Text und ${q.answers.length} Antwort(en) anzeigen` : "Ganzen Text anzeigen" }}
@@ -424,7 +425,7 @@ function exportSelected() {
     <button :disabled="busy" @click="openPreview">
       <span v-if="busy" class="spinner" /> Export-Vorschau
     </button>
-    <div v-for="w in selectionWarnings" :key="w" class="warn">⚠ {{ w }}</div>
+    <div v-for="w in selectionWarnings" :key="w" class="warn"><Icon name="review" /> {{ w }}</div>
   </div>
 
   <dialog ref="dialog" class="modal" aria-labelledby="pv-title" @close="preview = null">

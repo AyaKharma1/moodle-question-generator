@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Icon from "../components/Icon.vue";
 import { computed, onMounted, ref } from "vue";
 import { api, ApiError, type ImportFile, type ImportSummary } from "../api";
 import { formatDate, plural } from "../bank";
@@ -89,7 +90,7 @@ function kb(n: number) {
          @keydown.enter.prevent="input?.click()" @keydown.space.prevent="input?.click()"
          @click="input?.click()"
          @dragover.prevent="over = true" @dragleave="over = false" @drop.prevent="onDrop">
-      <div class="icon">📄</div>
+      <div class="icon"><Icon name="file" /></div>
       <strong>XML-Dateien hierher ziehen oder klicken</strong>
       <div class="muted">Moodle-XML, max. 10 MB pro Datei, bis zu 20 Dateien</div>
       <input ref="input" type="file" accept=".xml" multiple style="display: none"
@@ -121,7 +122,7 @@ function kb(n: number) {
     <h2>Ergebnis</h2>
     <div v-for="r in results" :key="r.filename" class="card tight">
       <div class="card-head" style="margin-bottom: 0.4rem">
-        <strong>📄 {{ r.filename }}</strong>
+        <strong><Icon name="file" /> {{ r.filename }}</strong>
         <span v-if="r.error" class="badge danger">Fehler</span>
         <span v-else class="badge ok">Importiert</span>
       </div>
@@ -136,7 +137,7 @@ function kb(n: number) {
         <div v-if="r.report" style="margin-top: 0.6rem">
           <div class="chips" aria-label="Fragetypen">
             <span v-for="t in r.report.types" :key="t.type" class="chip"><strong>{{ t.count }}</strong> {{ t.name }}</span>
-            <span v-if="r.report.media.with_files" class="chip">🖼 {{ r.report.media.with_files }} mit Bildern</span>
+            <span v-if="r.report.media.with_files" class="chip"><Icon name="image" /> {{ r.report.media.with_files }} mit Bildern</span>
           </div>
           <ul v-if="r.report.warnings.length" style="margin: 0.5rem 0 0; padding-left: 1.1rem">
             <li v-for="w in r.report.warnings" :key="w.code + w.text">
@@ -171,7 +172,7 @@ function kb(n: number) {
           <td><router-link :to="{ name: 'bank', query: { file: f.id } }">{{ f.filename }}</router-link></td>
           <td>
             <div class="chips">
-              <span v-if="f.fach" class="chip">📚 <strong>{{ f.fach }}</strong></span>
+              <span v-if="f.fach" class="chip"><Icon name="book" /> <strong>{{ f.fach }}</strong></span>
               <router-link v-for="c in f.categories.slice(0, 6)" :key="c" class="chip"
                            :to="{ name: 'bank', query: { file: f.id, category: c } }">{{ c }}</router-link>
               <span v-if="f.categories.length > 6" class="chip">+{{ f.categories.length - 6 }}</span>

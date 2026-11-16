@@ -327,3 +327,10 @@ main:focus { outline: none; }
 .hbar .fill { height: 100%; background: var(--primary); }
 dialog.modal { border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; max-width: 720px; width: calc(100% - 2rem); }
 dialog.modal::backdrop { background: rgba(0, 0, 0, 0.4); }
+
+/* icons and clickable stat tiles */
+.icon-svg { vertical-align: -0.15em; flex: none; }
+.empty .icon .icon-svg, .cta .icon .icon-svg { width: 2.2rem; height: 2.2rem; }
+button.stat, button.stat.danger, button.stat.warn, button.stat.ok { background: var(--card); color: inherit; font: inherit; text-align: left; width: 100%; box-shadow: var(--shadow); border: 1px solid var(--border); }
+button.stat:hover, button.stat[aria-pressed="true"] { border-color: var(--primary); }
+.sev .icon-svg { width: 0.95em; height: 0.95em; }
