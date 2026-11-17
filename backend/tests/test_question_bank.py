@@ -233,3 +233,43 @@ def test_category_prefix_puts_the_export_in_its_own_categories(auth_client):
         return sorted(etree.tostring(q, method="c14n") for q in etree.fromstring(r.content).findall("question")
                       if q.get("type") != "category")
     assert questions(plain) == questions(prefixed)
+
+
+# ---------------- import counting (does not depend on loading the whole bank) ----------------
+
+def _mc_xml(*questions):
+    """A tiny Moodle XML file; each question is (name, text, index_of_correct_answer)."""
+    body = ""
+    for name, text, right in questions:
+        answers = "".join(
+            f'<answer fraction="{100 if k == right else 0}"><text>Antwort {k}</text></answer>'
+            for k in range(3)
+        )
+        body += (f'<question type="multichoice"><name><text>{name}</text></name>'
+                 f'<questiontext format="html"><text>{text}</text></questiontext>'
+                 f'<single>true</single>{answers}</question>')
+    cat = '<question type="category"><category><text>$course$/top/Fach/Kat</text></category></question>'
+    return f'<?xml version="1.0"?><quiz>{cat}{body}</quiz>'.encode()
+
+
+def test_import_counts_new_existing_and_conflicting_questions(auth_client):
+    a = _import(auth_client, "a.xml", data=_mc_xml(("A", "Frage Alpha", 0), ("B", "Frage Beta", 1)))[0]
+    assert (a["new"], a["existing"], a["conflicts"]) == (2, 0, 0)
+
+    # file 2: A again (existing), B with another correct answer (conflict), C is new
+    b = _import(auth_client, "b.xml", data=_mc_xml(("A", "Frage Alpha", 0), ("B2", "Frage Beta", 2),
+                                                   ("C", "Frage Gamma", 0)))[0]
+    assert (b["new"], b["existing"], b["conflicts"]) == (2, 1, 1)
+
+    names = _by_name(auth_client)
+    assert [o["filename"] for o in names["A"]["origins"]] == ["a.xml", "b.xml"]
+    assert len(names) == 4
+    totals = auth_client.get("/api/bank/overview").json()["totals"]
+    assert (totals["questions"], totals["files"], totals["duplicates"], totals["conflicts"]) == (4, 2, 1, 1)
+
+
+def test_the_same_question_twice_in_one_file_is_stored_once(auth_client):
+    r = _import(auth_client, "dup.xml", data=_mc_xml(("A", "Frage Alpha", 0), ("A", "Frage Alpha", 0)))[0]
+    assert (r["total"], r["new"], r["existing"]) == (2, 1, 1)
+    origin = _by_name(auth_client)["A"]["origins"]
+    assert [o["filename"] for o in origin] == ["dup.xml", "dup.xml"]
