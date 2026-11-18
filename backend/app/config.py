@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # MUST be overridden in production via SECRET_KEY env var.
     secret_key: str = DEFAULT_SECRET_KEY
     access_token_expire_minutes: int = 60
+    # Set REGISTRATION_OPEN=false once all accounts exist (e.g. on a shared server),
+    # so nobody else can create an account.
+    registration_open: bool = True
     jwt_algorithm: str = "HS256"
 
     # --- Database ---
