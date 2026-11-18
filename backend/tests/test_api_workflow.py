@@ -41,6 +41,21 @@ def test_weak_password_rejected(client):
     assert r.status_code == 422
 
 
+def test_registration_can_be_closed(client):
+    from app.config import Settings, get_settings
+    from app.main import app
+
+    app.dependency_overrides[get_settings] = lambda: Settings(registration_open=False)
+    try:
+        r = client.post("/api/auth/register", json={"email": "x@example.com", "password": "password123"})
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+    assert r.status_code == 403
+    # an open server still accepts registrations
+    ok = client.post("/api/auth/register", json={"email": "x@example.com", "password": "password123"})
+    assert ok.status_code == 201
+
+
 # ---------------- documents ----------------
 
 def test_upload_and_list_document(auth_client):

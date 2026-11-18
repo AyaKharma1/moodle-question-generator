@@ -16,7 +16,13 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserOut, status_code=201)
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+def register(
+    payload: UserCreate,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not settings.registration_open:
+        raise HTTPException(status_code=403, detail="Die Registrierung ist auf diesem Server geschlossen.")
     exists = db.scalar(select(User).where(User.email == payload.email))
     if exists:
         raise HTTPException(status_code=409, detail="Diese E-Mail-Adresse ist bereits registriert.")

@@ -133,12 +133,18 @@ def import_moodle_file(db: Session, *, owner: User, filename: str,
     db.flush()
 
     summary = ImportSummary(file_id=import_file.id, filename=filename, fach=fach)
-    by_fp = {
-        q.fingerprint: q for q in db.scalars(
-            select(Question).where(Question.owner_id == owner.id, Question.fingerprint.is_not(None))
-        )
-    }
-    text_fps = {q.text_fingerprint for q in by_fp.values()}
+    # Only three columns are needed to recognise questions that are already in the
+    # bank. Loading whole Question objects (with answers and origins) for every
+    # file made each import slower than the one before it.
+    known_ids: dict[str, int] = {}
+    text_fps: set[str | None] = set()
+    for qid, fp, text_fp in db.execute(
+        select(Question.id, Question.fingerprint, Question.text_fingerprint)
+        .where(Question.owner_id == owner.id, Question.fingerprint.is_not(None))
+    ):
+        known_ids[fp] = qid
+        text_fps.add(text_fp)
+    new_rows: dict[str, Question] = {}      # questions created by this very file
     categories: list[str] = []
 
     for parsed in parsed_questions:
@@ -147,20 +153,24 @@ def import_moodle_file(db: Session, *, owner: User, filename: str,
         if category not in categories:
             categories.append(category)
 
-        row = by_fp.get(parsed.fingerprint)
-        if row is None:
+        occurrence = QuestionOccurrence(import_file=import_file, fach=q_fach, category=category)
+        row = new_rows.get(parsed.fingerprint)
+        if row is not None:
+            summary.existing += 1
+            row.occurrences.append(occurrence)
+        elif parsed.fingerprint in known_ids:
+            summary.existing += 1
+            occurrence.question_id = known_ids[parsed.fingerprint]
+            db.add(occurrence)
+        else:
             if parsed.text_fingerprint in text_fps:
                 summary.conflicts += 1
             row = _new_question(owner, parsed, q_fach, category)
             db.add(row)
-            by_fp[parsed.fingerprint] = row
+            new_rows[parsed.fingerprint] = row
             text_fps.add(parsed.text_fingerprint)
             summary.new += 1
-        else:
-            summary.existing += 1
-        row.occurrences.append(QuestionOccurrence(
-            import_file=import_file, fach=q_fach, category=category,
-        ))
+            row.occurrences.append(occurrence)
         summary.total += 1
 
     import_file.question_count = summary.total
@@ -230,17 +240,25 @@ def _bank_questions(db: Session, owner: User) -> list[Question]:
 
 
 def overview(db: Session, owner: User) -> dict:
-    questions = _bank_questions(db, owner)
-    files = list(db.scalars(select(ImportFile).where(ImportFile.owner_id == owner.id)))
-
+    # Counting happens in the database: the dashboard must not load every
+    # question (with answers and origins) just to show a few numbers.
     tree: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for q in questions:
-        tree[q.fach or "Ohne Fach"][q.category or NO_CATEGORY] += 1
+    total_questions = 0
+    for fach, category, count in db.execute(
+        select(Question.fach, Question.category, func.count(Question.id))
+        .where(Question.owner_id == owner.id)
+        .group_by(Question.fach, Question.category)
+    ):
+        tree[fach or "Ohne Fach"][category or NO_CATEGORY] += count
+        total_questions += count
+    file_count = db.scalar(
+        select(func.count(ImportFile.id)).where(ImportFile.owner_id == owner.id)
+    ) or 0
 
     from app.question_bank import findings as fx          # findings builds on this module
-    analysis = analysis_cached(db, owner)
+    analysis, found = _refresh(db, owner, with_findings=True)    # one load for both
     decisions = fx.decisions_of(db, owner)
-    quality = fx.summarize(fx.with_state(findings_cached(db, owner), decisions))
+    quality = fx.summarize(fx.with_state(found, decisions))
     return {
         "quality": {
             "open": quality["open"], "done": quality["done"],
@@ -250,8 +268,8 @@ def overview(db: Session, owner: User) -> dict:
                                   if not fx.group_resolved([q["id"] for q in g["questions"]], decisions)),
         },
         "totals": {
-            "questions": len(questions),
-            "files": len(files),
+            "questions": total_questions,
+            "files": file_count,
             "fachs": len(tree),
             "categories": sum(len(c) for c in tree.values()),
             "duplicates": len(analysis["exact"]),
@@ -388,15 +406,7 @@ def analysis_cached(db: Session, owner: User) -> dict:
 
     The result is shared between requests: do not modify it.
     """
-    version = bank_version(db, owner)
-    with _cache_lock:
-        hit = _cache.get(owner.id)
-        if hit and hit[0] == version:
-            return hit[1]
-    result = analyse(db, owner)
-    with _cache_lock:
-        _cache[owner.id] = (version, result)
-    return result
+    return _refresh(db, owner, with_findings=False)[0]
 
 
 def findings_cached(db: Session, owner: User) -> list[dict]:
@@ -405,17 +415,35 @@ def findings_cached(db: Session, owner: User) -> list[dict]:
     The lecturer's decisions are *not* part of this: they are applied on top
     with ``findings.with_state`` because they change more often than the questions.
     """
+    return _refresh(db, owner, with_findings=True)[1]
+
+
+def _refresh(db: Session, owner: User, *, with_findings: bool) -> tuple[dict, list[dict] | None]:
+    """Analysis (and, if asked, findings) for the current bank state.
+
+    The questions are loaded at most once per call, however many of the two
+    results have to be recomputed.
+    """
     from app.question_bank.findings import build_findings   # findings builds on this module
 
     version = bank_version(db, owner)
     with _cache_lock:
-        hit = _findings_cache.get(owner.id)
-        if hit and hit[0] == version:
-            return hit[1]
-    result = build_findings(_bank_questions(db, owner), analysis_cached(db, owner))
+        a_hit, f_hit = _cache.get(owner.id), _findings_cache.get(owner.id)
+    a_fresh = bool(a_hit and a_hit[0] == version)
+    f_fresh = bool(f_hit and f_hit[0] == version)
+    if a_fresh and (f_fresh or not with_findings):
+        return a_hit[1], (f_hit[1] if f_fresh else None)
+
+    questions = _bank_questions(db, owner)
+    analysis = a_hit[1] if a_fresh else analyse(db, owner, questions=questions)
+    findings = f_hit[1] if f_fresh else None
+    if with_findings and findings is None:
+        findings = build_findings(questions, analysis)
     with _cache_lock:
-        _findings_cache[owner.id] = (version, result)
-    return result
+        _cache[owner.id] = (version, analysis)
+        if findings is not None:
+            _findings_cache[owner.id] = (version, findings)
+    return analysis, findings
 
 
 def analysis_counts(analysis: dict) -> dict:

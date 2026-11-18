@@ -1,0 +1,52 @@
+# Production / shared-server stack.
+#
+#   cp .env.prod.example .env      (then fill in the values)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Only the web port is published. The database and the API are reachable from
+# inside the compose network only. See DEPLOYMENT_DE.md for the full guide.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moodle
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD in .env setzen}
+      POSTGRES_DB: moodleqg
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moodle -d moodleqg"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://moodle:${DB_PASSWORD}@db:5432/moodleqg
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY in .env setzen}
+      ENVIRONMENT: production
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_API_KEY: ${AI_API_KEY:-}
+      UPLOAD_DIR: /app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/data/uploads
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${HTTP_PORT:-8081}:80"
+
+volumes:
+  pgdata:
+  uploads:
